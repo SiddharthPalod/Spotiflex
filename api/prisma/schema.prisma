@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── Users ────────────────────────────────────────────────────────────────
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  history       WatchHistory[]
+  likes         Like[]
+  playlists     Playlist[]
+  searchHistory SearchHistory[]
+  clickHistory  ClickHistory[]
+  hoverHistory  HoverHistory[]
+}
+
+// ── Tracks (Local Cache for Spotify/YouTube metadata) ────────────────────
+model Track {
+  id             String   @id // Spotify ID or Custom ID
+  title          String
+  artist         String
+  album          String?
+  albumId        String?  // ID of the parent album (if this track belongs to one)
+  isAlbum        Boolean  @default(false) // true = this row IS an album, not a song
+  youtubeVideoId String?  // Cached from YouTube Data API
+  coverArtUrl    String?
+  tags           String?  // Comma-separated list of genres/moods for ML content-based filtering
+  
+  // Relations
+  history        WatchHistory[]
+  likes          Like[]
+  playlistTracks PlaylistTrack[]
+}
+
+// ── Telemetry & Watch History (Phase 3 ML Fuel) ──────────────────────────
+model WatchHistory {
+  id              String   @id @default(uuid())
+  userId          String
+  trackId         String
+  watchedAt       DateTime @default(now())
+  
+  // Implicit feedback metrics
+  durationWatched Int      @default(0)   // Seconds actively watched before skip/close
+  completed       Boolean  @default(false)
+  // How the user left this track:
+  //   null     = song played to natural end (completed=true)
+  //   "closed" = user hit the back/close button mid-song
+  //   "manual" = user clicked the Up Next banner to skip early
+  //   "auto"   = Up Next timer counted down and auto-advanced
+  skipSource      String?  // null | "closed" | "manual" | "auto"
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track           Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([userId, watchedAt])
+}
+
+// ── Explicit Feedback ────────────────────────────────────────────────────
+model Like {
+  id        String   @id @default(uuid())
+  userId    String
+  trackId   String
+  isLike    Boolean  // true = thumbs up, false = thumbs down
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackId]) // A user can only like/dislike a track once
+}
+
+// ── Custom Playlists ─────────────────────────────────────────────────────
+model Playlist {
+  id        String   @id @default(uuid())
+  name      String
+  userId    String
+  createdAt DateTime @default(now())
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracks    PlaylistTrack[]
+}
+
+model PlaylistTrack {
+  playlistId String
+  trackId    String
+  addedAt    DateTime @default(now())
+  order      Int      @default(0)
+
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  track      Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@id([playlistId, trackId])
+}
+
+// ── Search Telemetry ───────────────────────────────────────
+model SearchHistory {
+  id          String   @id @default(uuid())
+  userId      String
+  query       String
+  resultCount Int      @default(0)
+  searchedAt  DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, searchedAt])
+}
+
+// ── Click Telemetry ────────────────────────────────────────
+model ClickHistory {
+  id          String   @id @default(uuid())
+  userId      String
+  trackId     String
+  isAlbum     Boolean  @default(false)
+  clickedAt   DateTime @default(now())
+  source      String   @default("browse") // "browse", "search", "recommendation"
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, clickedAt])
+}
+
+// ── Hover Telemetry ────────────────────────────────────────
+model HoverHistory {
+  id          String   @id @default(uuid())
+  userId      String
+  trackId     String
+  isAlbum     Boolean  @default(false)
+  durationMs  Int      // Duration hovered in milliseconds
+  hoveredAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, hoveredAt])
+}
+
+// ── Machine Learning State ──────────────────────────────────────
+model LinUCBState {
+  userId    String   @id // 'global' for global state, or the specific User's ID
+  A         Bytes    // Serialized numpy array for the A covariance matrix
+  b         Bytes    // Serialized numpy array for the b reward vector
+  updatedAt DateTime @updatedAt
+}
