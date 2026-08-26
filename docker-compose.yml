@@ -1,0 +1,67 @@
+services:
+  # ── 1. Redis Cache Service ──────────────────────────────────────────
+  # Runs Redis with AOF persistence enabled so YouTube video cache survives restarts.
+  # Replaces the need to manually run "sudo service redis-server start" in WSL!
+  redis:
+    image: redis:7-alpine
+    container_name: spotiflix-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── 2. Backend API & ML Daemon Service ──────────────────────────────
+  # Runs Express REST API (port 3001) and spawns the Python ML daemon (FAISS + LinUCB)
+  api:
+    container_name: spotiflix-api
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - api/.env
+    environment:
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=file:./dev.db
+      - PYTHONUNBUFFERED=1
+      - OPENBLAS_NUM_THREADS=1
+      - NODE_ENV=development
+    volumes:
+      - ./api:/app/api
+      - ./ml:/app/ml
+      - /app/api/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── 3. Frontend UI Service ──────────────────────────────────────────
+  # React + Vite UI running on port 5173 with hot reload & API proxying
+  frontend:
+    container_name: spotiflix-frontend
+    build:
+      context: ./netflix
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_PROXY_TARGET=http://api:3001
+    volumes:
+      - ./netflix:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  redis_data:
+    driver: local

@@ -329,12 +329,12 @@ export default function VideoPlayer() {
               opts={ytOpts}
               className={`w-full h-full`}
               iframeClassName="w-full h-full"
-              onReady={(e) => {
+              onReady={() => {
                  setLoadState('ready');
                  hasTriggeredUpNextRef.current = false;
               }}
               onError={() => setLoadState('error')}
-              onPlay={(e) => { 
+              onPlay={(e: any) => { 
                 playStartTimeRef.current = Date.now();
                 checkProgress(e.target);
               }}

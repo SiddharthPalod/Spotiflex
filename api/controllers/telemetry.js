@@ -252,7 +252,8 @@ export const getMyList = async (req, res) => {
   try {
     const user = await getOrCreateUser();
 
-    const playlist = await prisma.playlist.findFirst({
+    // 1. Fetch Liked Songs playlist
+    const likedPlaylist = await prisma.playlist.findFirst({
       where: { userId: user.id, name: LIKED_SONGS_PLAYLIST_NAME },
       include: {
         tracks: {
@@ -262,42 +263,290 @@ export const getMyList = async (req, res) => {
       },
     });
 
-    if (!playlist) {
-      return res.status(200).json({ albums: [], tracks: [] });
-    }
-
     const albums = [];
     const tracks = [];
 
-    for (const pt of playlist.tracks) {
-      const t = pt.track;
-      if (t.isAlbum) {
-        albums.push({
-          id:          t.id,
-          title:       t.title,
-          artist:      t.artist,
-          coverArtUrl: t.coverArtUrl,
-          isAlbum:     true,
-          addedAt:     pt.addedAt,
-        });
-      } else {
-        tracks.push({
-          id:          t.id,
-          title:       t.title,
-          artist:      t.artist,
-          album:       t.album,
-          coverArtUrl: t.coverArtUrl,
-          youtubeVideoId: t.youtubeVideoId,
-          isAlbum:     false,
-          addedAt:     pt.addedAt,
-        });
+    if (likedPlaylist) {
+      for (const pt of likedPlaylist.tracks) {
+        const t = pt.track;
+        if (t.isAlbum) {
+          albums.push({
+            id:          t.id,
+            title:       t.title,
+            artist:      t.artist,
+            coverArtUrl: t.coverArtUrl,
+            isAlbum:     true,
+            addedAt:     pt.addedAt,
+          });
+        } else {
+          tracks.push({
+            id:          t.id,
+            title:       t.title,
+            artist:      t.artist,
+            album:       t.album,
+            coverArtUrl: t.coverArtUrl,
+            youtubeVideoId: t.youtubeVideoId,
+            isAlbum:     false,
+            addedAt:     pt.addedAt,
+          });
+        }
       }
     }
 
-    res.status(200).json({ albums, tracks });
+    // 2. Fetch User's Custom Playlists
+    const customPlaylists = await prisma.playlist.findMany({
+      where: {
+        userId: user.id,
+        NOT: { name: LIKED_SONGS_PLAYLIST_NAME },
+      },
+      include: {
+        tracks: {
+          include: { track: true },
+          orderBy: { addedAt: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const playlists = customPlaylists.map(p => ({
+      id: p.id,
+      name: p.name,
+      title: p.name,
+      createdAt: p.createdAt,
+      tracks: p.tracks.map(pt => ({
+        id: pt.track.id,
+        title: pt.track.title,
+        name: pt.track.title,
+        artist: pt.track.artist,
+        album: pt.track.album,
+        coverArtUrl: pt.track.coverArtUrl,
+        youtubeVideoId: pt.track.youtubeVideoId,
+        isAlbum: false,
+        addedAt: pt.addedAt,
+      })),
+      coverArtUrl: p.tracks[0]?.track?.coverArtUrl || null,
+      trackCount: p.tracks.length,
+    }));
+
+    res.status(200).json({ albums, tracks, playlists });
   } catch (error) {
     console.error('[Telemetry] getMyList Error:', error);
     res.status(500).json({ error: 'Failed to fetch My List' });
+  }
+};
+
+/**
+ * POST /api/telemetry/playlist
+ * Create a new custom playlist
+ */
+export const createPlaylist = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Playlist name is required' });
+    }
+    const user = await getOrCreateUser();
+    const playlist = await prisma.playlist.create({
+      data: {
+        name: name.trim(),
+        userId: user.id,
+      },
+      include: {
+        tracks: {
+          include: { track: true },
+          orderBy: { addedAt: 'asc' },
+        },
+      },
+    });
+
+    res.status(201).json({
+      playlist: {
+        id: playlist.id,
+        name: playlist.name,
+        title: playlist.name,
+        createdAt: playlist.createdAt,
+        tracks: [],
+        coverArtUrl: null,
+        trackCount: 0,
+      }
+    });
+  } catch (error) {
+    console.error('[Telemetry] createPlaylist Error:', error);
+    res.status(500).json({ error: 'Failed to create playlist' });
+  }
+};
+
+/**
+ * GET /api/telemetry/playlists
+ * Fetch all custom playlists
+ */
+export const getPlaylists = async (req, res) => {
+  try {
+    const user = await getOrCreateUser();
+    const customPlaylists = await prisma.playlist.findMany({
+      where: {
+        userId: user.id,
+        NOT: { name: LIKED_SONGS_PLAYLIST_NAME },
+      },
+      include: {
+        tracks: {
+          include: { track: true },
+          orderBy: { addedAt: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const playlists = customPlaylists.map(p => ({
+      id: p.id,
+      name: p.name,
+      title: p.name,
+      createdAt: p.createdAt,
+      tracks: p.tracks.map(pt => ({
+        id: pt.track.id,
+        title: pt.track.title,
+        name: pt.track.title,
+        artist: pt.track.artist,
+        album: pt.track.album,
+        coverArtUrl: pt.track.coverArtUrl,
+        youtubeVideoId: pt.track.youtubeVideoId,
+        isAlbum: false,
+        addedAt: pt.addedAt,
+      })),
+      coverArtUrl: p.tracks[0]?.track?.coverArtUrl || null,
+      trackCount: p.tracks.length,
+    }));
+
+    res.status(200).json({ playlists });
+  } catch (error) {
+    console.error('[Telemetry] getPlaylists Error:', error);
+    res.status(500).json({ error: 'Failed to fetch playlists' });
+  }
+};
+
+/**
+ * POST /api/telemetry/playlist/:playlistId/tracks
+ * Add a track to a custom playlist
+ */
+export const addTrackToPlaylist = async (req, res) => {
+  try {
+    const { playlistId } = req.params;
+    const { track } = req.body;
+    if (!track || !track.id) {
+      return res.status(400).json({ error: 'Track is required' });
+    }
+
+    const user = await getOrCreateUser();
+    const playlist = await prisma.playlist.findFirst({
+      where: { id: playlistId, userId: user.id },
+    });
+
+    let coverArt = track.coverArtUrl;
+    if (!coverArt && (track.title || track.name) && track.artist) {
+      try {
+        const { CoverArtService } = await import('../services/coverArt.js');
+        coverArt = await CoverArtService.getArtwork(track.title || track.name, track.artist);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    const trackId = String(track.id);
+    const trackWithArt = { ...track, coverArtUrl: coverArt || track.coverArtUrl };
+    await upsertTrack(trackWithArt, { isAlbum: false }, true);
+
+    await prisma.playlistTrack.upsert({
+      where: { playlistId_trackId: { playlistId, trackId } },
+      update: {},
+      create: {
+        playlistId,
+        trackId,
+        order: 0,
+      },
+    });
+
+    const updated = await prisma.playlist.findUnique({
+      where: { id: playlistId },
+      include: {
+        tracks: {
+          include: { track: true },
+          orderBy: { addedAt: 'asc' },
+        },
+      },
+    });
+
+    res.status(200).json({
+      playlist: {
+        id: updated.id,
+        name: updated.name,
+        title: updated.name,
+        createdAt: updated.createdAt,
+        tracks: updated.tracks.map(pt => ({
+          id: pt.track.id,
+          title: pt.track.title,
+          name: pt.track.title,
+          artist: pt.track.artist,
+          album: pt.track.album,
+          coverArtUrl: pt.track.coverArtUrl,
+          youtubeVideoId: pt.track.youtubeVideoId,
+          isAlbum: false,
+          addedAt: pt.addedAt,
+        })),
+        coverArtUrl: updated.tracks[0]?.track?.coverArtUrl || null,
+        trackCount: updated.tracks.length,
+      }
+    });
+  } catch (error) {
+    console.error('[Telemetry] addTrackToPlaylist Error:', error);
+    res.status(500).json({ error: 'Failed to add track to playlist' });
+  }
+};
+
+/**
+ * DELETE /api/telemetry/playlist/:playlistId/tracks/:trackId
+ * Remove a track from a custom playlist
+ */
+export const removeTrackFromPlaylist = async (req, res) => {
+  try {
+    const { playlistId, trackId } = req.params;
+    const user = await getOrCreateUser();
+
+    await prisma.playlistTrack.deleteMany({
+      where: {
+        playlistId,
+        trackId: String(trackId),
+        playlist: { userId: user.id },
+      },
+    });
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('[Telemetry] removeTrackFromPlaylist Error:', error);
+    res.status(500).json({ error: 'Failed to remove track from playlist' });
+  }
+};
+
+/**
+ * DELETE /api/telemetry/playlist/:playlistId
+ * Delete a custom playlist
+ */
+export const deletePlaylist = async (req, res) => {
+  try {
+    const { playlistId } = req.params;
+    const user = await getOrCreateUser();
+
+    await prisma.playlist.deleteMany({
+      where: {
+        id: playlistId,
+        userId: user.id,
+        NOT: { name: LIKED_SONGS_PLAYLIST_NAME },
+      },
+    });
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('[Telemetry] deletePlaylist Error:', error);
+    res.status(500).json({ error: 'Failed to delete playlist' });
   }
 };
 

@@ -143,7 +143,7 @@ const Navbar = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                onBlur={(e) => {
+                onBlur={() => {
                   // Small delay to allow buttons click to register before closing
                   setTimeout(() => {
                     if (!searchQuery) setSearchOpen(false);

@@ -29,4 +29,9 @@ export interface Movie {
   first_air_date?: string;
   media_type?: string;
   isAlbum?: boolean;
+  isPlaylist?: boolean;
+  playlistId?: string;
+  _likedSongsTracks?: any[];
+  _playlistTracks?: any[];
+  _onTracksUpdated?: () => void;
 }

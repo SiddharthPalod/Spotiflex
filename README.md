@@ -1,14 +1,14 @@
-# Spotiflix 🎵📺
+# Spotiflex 🎵📺
 
-Spotiflix (or AudioFlix) is a next-generation music streaming application that combines the **binge-worthy visual hierarchy of Netflix** with the **auditory accuracy of Spotify's recommendation algorithms**, while utilizing **YouTube as the underlying CDN** for playing official music videos. 
+Spotiflex (or AudioFlix) is a next-generation music streaming application that combines the **binge-worthy visual hierarchy of Netflix** with the **auditory accuracy of Spotify's recommendation algorithms**, while utilizing **YouTube as the underlying CDN** for playing official music videos. 
 
-Instead of traditional albums or playlists, Spotiflix presents music in a visual format where each banner represents a song or album, acting like "episodes" or "seasons" of a TV show.
+Instead of traditional albums or playlists, Spotiflex presents music in a visual format where each banner represents a song or album, acting like "episodes" or "seasons" of a TV show.
 
 ---
 
 ## 🎯 Features & Core Concepts
 - **Netflix UI for Music**: A highly engaging, visually rich interface tailored for music discovery.
-- **Music Videos Only**: Never just audio—Spotiflix dynamically fetches and plays the official music video for every track via the YouTube IFrame Player API.
+- **Music Videos Only**: Never just audio—Spotiflex dynamically fetches and plays the official music video for every track via the YouTube IFrame Player API.
 - **Global & Personal Recommendations**: 
   - **Cold Start**: Uses Spotify's API for curated global lists (Trending Now, Moods, Because you like [Artist]).
   - **Warm/Hot**: Transitions to a highly personalized custom Machine Learning engine as you interact with the app.
@@ -28,10 +28,10 @@ The project is split into three main microservices/folders:
 
 ## 🧠 The Recommendation Engine Pipeline
 
-To provide a personalized experience that matches or beats standard music apps, Spotiflix uses a hybrid Machine Learning architecture that blends content similarity, collaborative filtering, and sequential modeling.
+To provide a personalized experience that matches or beats standard music apps, Spotiflex uses a hybrid Machine Learning architecture that blends content similarity, collaborative filtering, and sequential modeling.
 
 ### 1. Telemetry & Reward Function
-Spotiflix relies on both explicit and implicit feedback:
+Spotiflex relies on both explicit and implicit feedback:
 - **Explicit Feedback**: Likes/Dislikes (`isLike`), Adding to playlists.
 - **Implicit Feedback (Dominant Signal)**: Watch-time ratio (`durationWatched / track_duration_seconds`). A manual skip after 90% watch time is a positive signal, while a back-button press after 3 seconds is a strong negative signal. Hover durations and click sources also contribute minor weights.
 
@@ -61,14 +61,14 @@ The top ~50 candidates from Stage 1 are passed to a Contextual Bandit (Hybrid Li
 
 ### 1. Frontend (`netflix/`)
 ```bash
-cd spotiflix/netflix
+cd Spotiflex/netflix
 npm install
 npm run dev
 ```
 
 ### 2. Backend API (`api/`)
 ```bash
-cd spotiflix/api
+cd Spotiflex/api
 npm install
 # Set up your .env file with database URLs and API keys
 node server.js
@@ -76,7 +76,7 @@ node server.js
 
 ### 3. ML Pipeline (`ml/`)
 ```bash
-cd spotiflix/ml
+cd Spotiflex/ml
 python -m venv venv
 source venv/bin/activate  # Or `venv\Scripts\activate` on Windows
 pip install -r requirements.txt
@@ -90,4 +90,4 @@ pip install -r requirements.txt
 - **Graph Self-Attention (gSASRec)** for surfacing deep cuts and preventing recommendation echo chambers.
 
 ---
-*Spotiflix is an ongoing experiment at the intersection of UI/UX and advanced RecSys architecture.*
+*Spotiflex is an ongoing experiment at the intersection of UI/UX and advanced RecSys architecture.*

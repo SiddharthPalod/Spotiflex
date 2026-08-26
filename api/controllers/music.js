@@ -61,11 +61,11 @@ export const getAlbumTracks = async (req, res) => {
 
 export const searchMedia = async (req, res) => {
     try {
-        const { q } = req.query;
+        const { q, type } = req.query;
         if (!q) {
             return res.status(400).json({ error: 'Missing search query parameter (q)' });
         }
-        const results = await LastFmService.search(q);
+        const results = await LastFmService.search(q, type);
         res.status(200).json(results);
     } catch (error) {
         console.error('[searchMedia]', error.message);

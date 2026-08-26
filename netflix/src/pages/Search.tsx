@@ -1,10 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { PlayIcon, InformationCircleIcon } from '@heroicons/react/24/solid';
-import { HeartIcon } from '@heroicons/react/24/solid';
-import { HeartIcon as HeartOutlineIcon } from '@heroicons/react/24/outline';
 import { Movie } from '../services/api.config';
-import { searchTracks, getImageUrl, fetchAlbumTracks, api } from '../services/movieService';
+import { searchTracks, fetchAlbumTracks, api } from '../services/movieService';
 import { usePlayerStore, useLikeStore } from '../utils/store';
 import MovieModal from '../components/MovieModal';
 import MediaCard from '../components/MediaCard';

@@ -9,14 +9,14 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    open: true,
+    open: false,
     hmr: {
       overlay: false,
     },
     // Proxy /api requests to the Express backend — eliminates CORS entirely
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:3001',
         changeOrigin: true,
         rewrite: (path) => path, // keep /api prefix as-is
       },
