@@ -75,20 +75,46 @@ export class MLService {
         return MLService.instance;
     }
 
+    /**
+     * Waits for the Python daemon to signal ready (polls with exponential backoff).
+     * The FAISS index takes ~15-30s to load into RAM on container start.
+     * Prevents the race where frontend fires recs before Python finishes initializing.
+     */
+    waitUntilReady(maxWaitMs = 45000) {
+        if (this.ready) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+            const start = Date.now();
+            let delay = 500;
+            const check = () => {
+                if (this.ready) return resolve();
+                if (Date.now() - start > maxWaitMs) return reject(new Error('ML Daemon did not become ready in time'));
+                delay = Math.min(delay * 1.5, 2000);
+                setTimeout(check, delay);
+            };
+            check();
+        });
+    }
+
     async getRecommendations(userId, historyTrackIds = []) {
         if (!this.ready) {
-            console.warn(`[MLService] Daemon not ready yet (still loading indices). Skipping request.`);
-            return [];
+            console.warn(`[MLService] Daemon still loading — waiting up to 45s for FAISS index to load...`);
+            try {
+                await this.waitUntilReady();
+            } catch {
+                console.warn(`[MLService] Daemon did not become ready in time. Skipping.`);
+                return [];
+            }
         }
         
         return new Promise((resolve, reject) => {
             const reqId = this.reqIdCounter++;
             
-            // Failsafe 5-second timeout so the API doesn't hang if Python freezes
+            // Failsafe 15-second timeout so the API doesn't hang if Python freezes.
+            // First request after boot can be slower due to mmap page-fault warmup.
             const timeout = setTimeout(() => {
                 this.callbacks.delete(reqId);
                 reject(new Error("ML Engine Inference Timeout"));
-            }, 5000);
+            }, 15000);
             
             // Register callback to be triggered when Python prints the matching JSON response
             this.callbacks.set(reqId, (res) => {
@@ -105,8 +131,12 @@ export class MLService {
 
     async getSimilarTracks(userId, trackId) {
         if (!this.ready) {
-            console.warn(`[MLService] Daemon not ready yet. Skipping similar tracks request.`);
-            return [];
+            console.warn(`[MLService] Daemon still loading — waiting for FAISS index...`);
+            try {
+                await this.waitUntilReady();
+            } catch {
+                return [];
+            }
         }
         
         return new Promise((resolve, reject) => {
@@ -115,7 +145,7 @@ export class MLService {
             const timeout = setTimeout(() => {
                 this.callbacks.delete(reqId);
                 reject(new Error("ML Engine Similar Tracks Timeout"));
-            }, 5000);
+            }, 15000);
             
             this.callbacks.set(reqId, (res) => {
                 clearTimeout(timeout);
