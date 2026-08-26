@@ -117,3 +117,24 @@ export const resolveVideo = async (req, res) => {
         res.status(500).json({ error: 'Failed to persist video ID' });
     }
 };
+
+export const getTagTracks = async (req, res) => {
+    try {
+        const { tag } = req.query;
+        const tracks = await LastFmService.getTrendingByTag(tag || 'pop');
+        res.status(200).json(tracks);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
+
+export const getTagAlbums = async (req, res) => {
+    try {
+        const { tag } = req.query;
+        const tracks = await LastFmService.getByTag(tag || 'pop');
+        res.status(200).json(tracks);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
+

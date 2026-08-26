@@ -208,3 +208,64 @@ export const deletePlaylist = async (playlistId: string) => {
   const res = await api.delete(`/telemetry/playlist/${playlistId}`);
   return res.data;
 };
+export const fetchHomeRows = async () => {
+  try {
+    const res = await api.get('/recommendations/home-rows');
+    return res.data;
+  } catch(e) {
+    console.error('fetchHomeRows failed', e);
+    return [];
+  }
+};
+
+export const fetchTagTracks = async (tag: string, type: 'tracks'|'albums' = 'tracks'): Promise<Movie[]> => {
+  try {
+    const ep = type === 'albums' ? '/tag-albums' : '/tag-tracks';
+    const response = await api.get(ep, { params: { tag } });
+    const raw: any[] = response.data || [];
+    return raw.map((item): Movie => {
+      const coverArtUrl = item.coverArtUrl || '';
+      return {
+        ...item,
+        youtubeVideoId: item.youtubeVideoId ?? null,
+        coverArtUrl,
+        poster_path:   coverArtUrl,
+        backdrop_path: coverArtUrl,
+        title:       item.title ?? item.name ?? 'Unknown',
+        name:        item.name  ?? item.title ?? 'Unknown',
+        overview:    item.overview ?? (item.album ? 'Album: ' + item.album : ''),
+        vote_average:item.vote_average ?? 0,
+        isAlbum:     item.isAlbum ?? (type === 'albums'),
+      };
+    });
+  } catch (error) {
+    console.error('fetchTagTracks failed', error);
+    return [];
+  }
+};
+
+export const fetchSpotiflexPicks = async (artist: string, title: string): Promise<Movie[]> => {
+  try {
+    const response = await api.get('/recommendations/spotiflex-picks', { params: { artist, title } });
+    const raw: any[] = response.data || [];
+    return raw.map((item): Movie => {
+      const coverArtUrl = item.coverArtUrl || '';
+      return {
+        ...item,
+        youtubeVideoId: item.youtubeVideoId ?? null,
+        coverArtUrl,
+        poster_path:   coverArtUrl,
+        backdrop_path: coverArtUrl,
+        title:       item.title ?? item.name ?? 'Unknown',
+        name:        item.name  ?? item.title ?? 'Unknown',
+        overview:    item.overview ?? (item.album ? 'Album: ' + item.album : ''),
+        vote_average:item.vote_average ?? 0,
+        isAlbum:     item.isAlbum ?? false,
+      };
+    });
+  } catch (error) {
+    console.error('fetchSpotiflexPicks failed', error);
+    return [];
+  }
+};
+

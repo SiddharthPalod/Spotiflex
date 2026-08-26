@@ -1,7 +1,13 @@
 import express from 'express';
-import { getMadeForYou, getSimilar } from '../controllers/recommendation.js';
+import { getMadeForYou, getSimilar, getHomeRows, getSpotiflexPicks } from '../controllers/recommendation.js';
 
 const router = express.Router();
+
+// GET /api/recommendations/home-rows
+router.get('/home-rows', getHomeRows);
+
+// GET /api/recommendations/spotiflex-picks
+router.get('/spotiflex-picks', getSpotiflexPicks);
 
 // GET /api/recommendations/for-you
 // Returns personalized tracks powered by the Hybrid ML Engine

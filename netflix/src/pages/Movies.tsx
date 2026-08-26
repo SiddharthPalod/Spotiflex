@@ -10,12 +10,12 @@ const Movies = () => {
     <div className="pt-24 min-h-screen pb-32">
       <div className="px-4 md:px-0">
         <h1 className="text-white text-4xl font-black mb-8 px-4 md:px-[60px] tracking-tight">Songs</h1>
-        <MovieRow title="🏆 Top Rated"          endpoint="topRated"      onMovieClick={setSelectedMovie} />
-        <MovieRow title="⚡ High Energy"         endpoint="actionMovies"  onMovieClick={setSelectedMovie} />
-        <MovieRow title="😊 Feel Good Vibes"    endpoint="comedyMovies"  onMovieClick={setSelectedMovie} />
-        <MovieRow title="🌙 Dark &amp; Intense"  endpoint="horrorMovies"  onMovieClick={setSelectedMovie} />
-        <MovieRow title="💕 Love Songs"         endpoint="romanceMovies" onMovieClick={setSelectedMovie} />
-        <MovieRow title="🎵 Deep Cuts"          endpoint="documentaries" onMovieClick={setSelectedMovie} />
+        <MovieRow title="🏆 Top Global Hits"     endpoint="trending"                    onMovieClick={setSelectedMovie} />
+        <MovieRow title="⚡ High Energy Workout" endpoint="tag-tracks?tag=workout"      onMovieClick={setSelectedMovie} />
+        <MovieRow title="😊 Feel Good Vibes"    endpoint="tag-tracks?tag=happy"        onMovieClick={setSelectedMovie} />
+        <MovieRow title="💕 Love Songs"         endpoint="tag-tracks?tag=romance"      onMovieClick={setSelectedMovie} />
+        <MovieRow title="🌙 Chill & Acoustic"    endpoint="tag-tracks?tag=acoustic"     onMovieClick={setSelectedMovie} />
+        <MovieRow title="🎵 Hindi Chartbusters" endpoint="tag-tracks?tag=hindi"        onMovieClick={setSelectedMovie} />
       </div>
 
       {selectedMovie && (

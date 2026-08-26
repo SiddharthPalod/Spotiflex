@@ -107,9 +107,7 @@ const Navbar = () => {
               <Link to="/" className="nav-link">Home</Link>
               <Link to="/tv-shows" className="nav-link">Albums</Link>
               <Link to="/movies" className="nav-link">Songs</Link>
-              <Link to="/new" className="nav-link">New &amp; Hot</Link>
               <Link to="/my-list" className="nav-link">My List</Link>
-              <Link to="/browse" className="nav-link">Browse</Link>
             </div>
 
             {/* Mobile Menu Button */}
@@ -250,9 +248,7 @@ const Navbar = () => {
             <Link to="/"        onClick={() => setIsMobileMenuOpen(false)} className="text-[18px] text-white font-medium">Home</Link>
             <Link to="/tv-shows"onClick={() => setIsMobileMenuOpen(false)} className="text-[18px] text-white font-medium">Albums</Link>
             <Link to="/movies"  onClick={() => setIsMobileMenuOpen(false)} className="text-[18px] text-white font-medium">Songs</Link>
-            <Link to="/new"     onClick={() => setIsMobileMenuOpen(false)} className="text-[18px] text-white font-medium">New &amp; Hot</Link>
             <Link to="/my-list" onClick={() => setIsMobileMenuOpen(false)} className="text-[18px] text-white font-medium">My List</Link>
-            <Link to="/browse"  onClick={() => setIsMobileMenuOpen(false)} className="text-[18px] text-white font-medium">Browse</Link>
           </div>
         </div>
       </div>
