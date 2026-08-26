@@ -5,60 +5,80 @@ export class YoutubeService {
 
     // ── getVideoId ─────────────────────────────────────────────────────────
     // Searches YouTube for the official music video and caches the result.
+    // Includes an automated scraper fallback if the YouTube Data API key quota is exhausted.
     static async getVideoId(trackName, artistName) {
-        const cacheKey = `yt:video:${artistName}:${trackName}`
+        const safeArtist = String(artistName || '').trim();
+        const safeTrack = String(trackName || '').trim();
+        const cacheKey = `yt:video:${safeArtist}:${safeTrack}`
             .toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
         const cachedId = await redisClient.get(cacheKey);
         if (cachedId) {
-            console.log(`[CACHE HIT] ${cacheKey}`);
             return cachedId;
         }
 
-        console.log(`[CACHE MISS] Fetching from YouTube API for ${cacheKey}`);
-        // Broaden the search query so we get a good mix of video and audio options
-        const searchQuery = `${trackName} ${artistName}`;
-
-        const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
-            params: {
-                part: 'snippet',
-                q: searchQuery,
-                type: 'video',
-                videoCategoryId: '10', // Music category
-                maxResults: 5,         // Fetch more to give our regex choices
-                key: process.env.YOUTUBE_API_KEY,
-            },
-        });
-
-        const items = response.data.items || [];
-        if (items.length === 0) throw new Error('Video not found on YouTube');
-
+        const searchQuery = `${safeTrack} ${safeArtist}`.trim();
         let selectedVideoId = null;
 
-        // ── Selection Strategy ──────────────────────────────────────────────
-        // 1. Official Music Video (highest priority)
-        // 2. Official Audio (fallback if no video)
-        // 3. VEVO / Artist official channel upload
-        // 4. Just the top result (fallback)
-        
-        const isOfficialVideo = (title) => /official (music )?video/i.test(title);
-        const isOfficialAudio = (title) => /official audio/i.test(title);
-        // Sometimes we want to avoid lyric videos unless they are the official ones
-        const isLyricVideo = (title) => /lyric/i.test(title);
+        // 1. Try YouTube Data API v3 if API key exists
+        if (process.env.YOUTUBE_API_KEY) {
+            try {
+                const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
+                    params: {
+                        part: 'snippet',
+                        q: searchQuery,
+                        type: 'video',
+                        videoCategoryId: '10',
+                        maxResults: 5,
+                        key: process.env.YOUTUBE_API_KEY,
+                    },
+                    timeout: 3000
+                });
 
-        const officialVideo = items.find(item => isOfficialVideo(item.snippet.title) && !isLyricVideo(item.snippet.title));
-        const officialAudio = items.find(item => isOfficialAudio(item.snippet.title) && !isLyricVideo(item.snippet.title));
-        const vevoVideo     = items.find(item => item.snippet.channelTitle.toLowerCase().includes('vevo') || item.snippet.channelTitle.toLowerCase().includes(artistName.toLowerCase()));
+                const items = response.data.items || [];
+                if (items.length > 0) {
+                    const isOfficialVideo = (title) => /official (music )?video/i.test(title);
+                    const isOfficialAudio = (title) => /official audio/i.test(title);
+                    const isLyricVideo = (title) => /lyric/i.test(title);
 
-        // Pick the best match in order of preference
-        const bestItem = officialVideo || officialAudio || vevoVideo || items[0];
-        selectedVideoId = bestItem.id.videoId;
+                    const officialVideo = items.find(item => isOfficialVideo(item.snippet.title) && !isLyricVideo(item.snippet.title));
+                    const officialAudio = items.find(item => isOfficialAudio(item.snippet.title) && !isLyricVideo(item.snippet.title));
+                    const vevoVideo     = items.find(item => item.snippet.channelTitle.toLowerCase().includes('vevo') || item.snippet.channelTitle.toLowerCase().includes(safeArtist.toLowerCase()));
 
-        if (!selectedVideoId) throw new Error('Video not found on YouTube');
+                    const bestItem = officialVideo || officialAudio || vevoVideo || items[0];
+                    selectedVideoId = bestItem.id?.videoId;
+                }
+            } catch (apiErr) {
+                // Quota exceeded (403/429) or network issue -> gracefully fallback to scraper
+                console.log(`[YouTube API Quota/Error] Falling back to zero-quota scraper for: ${searchQuery}`);
+            }
+        }
 
-        console.log(`[YOUTUBE MATCH] "${bestItem.snippet.title}" selected for ${artistName} - ${trackName}`);
+        // 2. Zero-Quota Web Scraper Fallback (bypasses all quota limits)
+        if (!selectedVideoId) {
+            try {
+                const res = await axios.get(`https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery + ' audio')}`, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                    },
+                    timeout: 4000
+                });
+                const html = res.data;
+                const match = html.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
+                if (match && match[1]) {
+                    selectedVideoId = match[1];
+                }
+            } catch (scraperErr) {
+                console.error(`[YouTube Scraper Error] ${scraperErr.message}`);
+            }
+        }
 
-        // Cache forever — video IDs for official music videos never change
+        if (!selectedVideoId) {
+            throw new Error(`Video not found on YouTube for: ${searchQuery}`);
+        }
+
+        // Cache forever — official music video IDs never change
         await redisClient.set(cacheKey, selectedVideoId);
         return selectedVideoId;
     }

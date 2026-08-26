@@ -290,3 +290,6 @@ models/
 *.pkl
 *.pt
 *.pth
+*.npy
+*.csv
+*.index

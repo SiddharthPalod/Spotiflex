@@ -221,13 +221,13 @@ export class LastFmService {
   /**
    * Search for tracks and albums
    */
-  static async search(query) {
+  static async search(query, type = 'all') {
     const apiKey = process.env.LASTFM_API_KEY;
     if (!apiKey) {
       throw new Error('LASTFM_API_KEY is missing from the backend .env file');
     }
 
-    const cacheKey = `lastfm-search:${query}`;
+    const cacheKey = `lastfm-search:${type}:${query}`;
     const cached = await redisClient.get(cacheKey);
     if (cached) {
       console.log(`[LASTFM CACHE HIT] ${cacheKey}`);
@@ -236,15 +236,19 @@ export class LastFmService {
 
     console.log(`[LASTFM CACHE MISS] Fetching search for ${query}`);
     
-    // Fire concurrent requests for track search and album search
-    const [trackRes, albumRes] = await Promise.all([
-      axios.get(LASTFM_URL, {
-        params: { method: 'track.search', track: query, api_key: apiKey, format: 'json', limit: 15 }
-      }).catch(() => ({ data: {} })),
-      axios.get(LASTFM_URL, {
-        params: { method: 'album.search', album: query, api_key: apiKey, format: 'json', limit: 10 }
-      }).catch(() => ({ data: {} }))
-    ]);
+    const isTracksOnly = (type === 'tracks' || type === 'songs');
+
+    const fetchTracks = axios.get(LASTFM_URL, {
+      params: { method: 'track.search', track: query, api_key: apiKey, format: 'json', limit: isTracksOnly ? 25 : 15 }
+    }).catch(() => ({ data: {} }));
+
+    const fetchAlbums = isTracksOnly
+      ? Promise.resolve({ data: {} })
+      : axios.get(LASTFM_URL, {
+          params: { method: 'album.search', album: query, api_key: apiKey, format: 'json', limit: 10 }
+        }).catch(() => ({ data: {} }));
+
+    const [trackRes, albumRes] = await Promise.all([fetchTracks, fetchAlbums]);
 
     let rawTracks = trackRes.data?.results?.trackmatches?.track || [];
     let rawAlbums = albumRes.data?.results?.albummatches?.album || [];
@@ -338,7 +342,7 @@ export class LastFmService {
       }
     });
 
-    const validCombined = combined.filter(c => c.coverArtUrl);
+    const validCombined = combined.filter(c => c.title && c.title.trim());
     await redisClient.set(cacheKey, JSON.stringify(validCombined), { EX: 24 * 60 * 60 });
     return validCombined;
   }

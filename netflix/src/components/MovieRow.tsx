@@ -1,12 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { PlayIcon, InformationCircleIcon } from '@heroicons/react/24/solid';
-import { HeartIcon } from '@heroicons/react/24/solid';
-import { HeartIcon as HeartOutlineIcon } from '@heroicons/react/24/outline';
 import { Movie } from '../services/api.config';
 import { fetchTracks, getImageUrl, fetchAlbumTracks, api } from '../services/movieService';
-import { usePlayerStore, useLikeStore } from '../utils/store';
-import MovieModal from './MovieModal';
+import { usePlayerStore, useLikeStore, Track } from '../utils/store';
 import MediaCard from './MediaCard';
 
 interface MovieRowProps {
@@ -152,7 +148,7 @@ const MovieRow = ({ title, endpoint, onMovieClick }: MovieRowProps) => {
             album: tracks[0].album || '',
             coverArtUrl: tracks[0].coverArtUrl || coverUrl,
             youtubeVideoId: tracks[0].youtubeVideoId,
-          }, tracks);
+          }, tracks as any as Track[]);
           return;
         }
       } catch (err) {

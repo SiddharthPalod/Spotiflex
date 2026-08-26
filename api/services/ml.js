@@ -10,12 +10,13 @@ export class MLService {
         this.callbacks = new Map();
         this.reqIdCounter = 1;
         
-        // ML Engine lives in the sibling directory
-        const mlDir = resolve(process.cwd(), '../ml');
+        // ML Engine lives in the sibling directory (or path specified by ML_DIR)
+        const mlDir = process.env.ML_DIR ? resolve(process.env.ML_DIR) : resolve(process.cwd(), '../ml');
         const scriptPath = join(mlDir, 'src/serving/daemon.py');
+        const pythonBin = process.env.PYTHON_BIN || 'python';
         
-        console.log(`[MLService] Booting Persistent Python Daemon...`);
-        this.process = spawn('python', [scriptPath], {
+        console.log(`[MLService] Booting Persistent Python Daemon using ${pythonBin}...`);
+        this.process = spawn(pythonBin, [scriptPath], {
             cwd: mlDir,
             env: { ...process.env, OPENBLAS_NUM_THREADS: '1' },
             // Route python stderr directly to Node's console so we see crash logs

@@ -156,9 +156,9 @@ export const fetchAlbumTracks = async (artist: string, album: string): Promise<M
 };
 
 // ── searchTracks ──────────────────────────────────────────────────────────
-export const searchTracks = async (query: string): Promise<Movie[]> => {
+export const searchTracks = async (query: string, type?: 'tracks' | 'all'): Promise<Movie[]> => {
   try {
-    const response = await api.get('/search', { params: { q: query } });
+    const response = await api.get('/search', { params: { q: query, type: type || 'all' } });
     const raw: any[] = response.data || [];
 
     return raw.map((item): Movie => {
@@ -180,4 +180,31 @@ export const searchTracks = async (query: string): Promise<Movie[]> => {
     console.error(`[movieService] searchTracks failed:`, error);
     return [];
   }
+};
+
+// ── Custom Playlist API Methods ───────────────────────────────────────────
+
+export const createPlaylist = async (name: string) => {
+  const res = await api.post('/telemetry/playlist', { name });
+  return res.data.playlist;
+};
+
+export const fetchPlaylists = async () => {
+  const res = await api.get('/telemetry/playlists');
+  return res.data.playlists || [];
+};
+
+export const addTrackToPlaylist = async (playlistId: string, track: Movie | any) => {
+  const res = await api.post(`/telemetry/playlist/${playlistId}/tracks`, { track });
+  return res.data.playlist;
+};
+
+export const removeTrackFromPlaylist = async (playlistId: string, trackId: string | number) => {
+  const res = await api.delete(`/telemetry/playlist/${playlistId}/tracks/${trackId}`);
+  return res.data;
+};
+
+export const deletePlaylist = async (playlistId: string) => {
+  const res = await api.delete(`/telemetry/playlist/${playlistId}`);
+  return res.data;
 };

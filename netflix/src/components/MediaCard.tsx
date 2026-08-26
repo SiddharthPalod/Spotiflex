@@ -101,12 +101,11 @@ export default function MediaCard({ movie, isLiked = false, matchStr, className 
           </div>
 
           {/* Match score */}
-          {/* {matchStr && (
+          {matchStr && (
             <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-white mb-1.5 opacity-0 group-hover/item:opacity-100 transition-opacity duration-300 delay-100">
               <span className="text-[#1DB954] font-semibold">{matchStr}</span>
-              <span className="border border-white/30 px-1 rounded">HD</span>
             </div>
-          )} */}
+          )}
 
           {/* Title + artist */}
           <div className="opacity-0 group-hover/item:opacity-100 transition-opacity duration-300 delay-150">
