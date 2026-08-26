@@ -15,10 +15,13 @@
 **/.vite
 **/*.log
 **/.DS_Store
+# Databases - bind-mounted at runtime via ./api:/app/api volume
 *.db
 *.sqlite
 *.sqlite3
-dev.db
-*.index
-*.npy
-*.csv
+api/prisma/dev.db
+# ML data directories - only needed at runtime (bind-mounted via ./ml:/app/ml volume)
+# Excluding whole directories is much faster than glob patterns (Docker skips the subtree entirely)
+ml/feature_store
+ml/synthetic_data
+ml/references

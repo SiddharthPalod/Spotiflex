@@ -8,10 +8,16 @@ import {
     fetchVideo,
     getAlbumTracks,
     searchMedia,
-    resolveVideo
+    resolveVideo,
+    getTagTracks,
+    getTagAlbums
 } from '../controllers/music.js';
 
 const router = express.Router();
+
+// Tag specific endpoints
+router.get('/tag-tracks', getTagTracks);
+router.get('/tag-albums', getTagAlbums);
 
 // Dynamic Last.fm Endpoints
 router.get('/trending', getTrending);

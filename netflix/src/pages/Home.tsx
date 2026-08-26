@@ -4,31 +4,36 @@ import MovieRow from '../components/MovieRow';
 import MovieModal from '../components/MovieModal';
 
 import { Movie } from '../services/api.config';
-import { fetchTracks, getImageUrl } from '../services/movieService';
+import { fetchTracks, getImageUrl, fetchHomeRows } from '../services/movieService';
 import { usePlayerStore } from '../utils/store';
 import YouTubeImage from '../components/YouTubeImage';
 
 const Home = () => {
   const [heroMovie, setHeroMovie] = useState<Movie | null>(null);
+  const [homeRows, setHomeRows] = useState<{title: string, endpoint: string}[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const { openPlayer } = usePlayerStore();
 
   useEffect(() => {
-    const loadHero = async () => {
+    const loadData = async () => {
       try {
-        const tracks = await fetchTracks('trending');
+        const [tracks, rows] = await Promise.all([
+          fetchTracks('trending'),
+          fetchHomeRows()
+        ]);
         if (tracks.length > 0) {
           const random = tracks[Math.floor(Math.random() * tracks.length)];
           setHeroMovie(random);
         }
+        setHomeRows(rows);
       } catch (error) {
-        console.error('Error loading hero track:', error);
+        console.error('Error loading home data:', error);
       } finally {
         setIsLoading(false);
       }
     };
-    loadHero();
+    loadData();
   }, []);
 
   if (isLoading) {
@@ -122,36 +127,37 @@ const Home = () => {
 
       {/* ── Music Rows ───────────────────────────────────────────────────── */}
       <div className="relative z-20 -mt-12 md:-mt-16 pb-32">
-        <MovieRow
-          title="Top Recommendations (Made For You)"
-          endpoint="madeForYou"
-          onMovieClick={setSelectedMovie}
-        />
-        <MovieRow
-          title="Trending Now"
-          endpoint="trending"
-          onMovieClick={setSelectedMovie}
-        />
-        <MovieRow
-          title="Spotiflex Picks"
-          endpoint="netflixOriginals"
-          onMovieClick={setSelectedMovie}
-        />
-        <MovieRow
-          title="Top Rated"
-          endpoint="topRated"
-          onMovieClick={setSelectedMovie}
-        />
-        <MovieRow
-          title="High Energy"
-          endpoint="actionMovies"
-          onMovieClick={setSelectedMovie}
-        />
-        <MovieRow
-          title="Feel Good Vibes"
-          endpoint="comedyMovies"
-          onMovieClick={setSelectedMovie}
-        />
+        {homeRows.length > 0 ? (
+          <>
+            <MovieRow
+              title={homeRows[0].title}
+              endpoint={homeRows[0].endpoint}
+              onMovieClick={setSelectedMovie}
+            />
+            
+            {/* Spotiflex Picks: Contextual to Hero Track */}
+            {heroMovie && (
+              <MovieRow
+                title="Spotiflex Picks"
+                endpoint={`recommendations/spotiflex-picks?artist=${encodeURIComponent(heroMovie.artist || '')}&title=${encodeURIComponent(heroMovie.title || heroMovie.name || '')}`}
+                onMovieClick={setSelectedMovie}
+              />
+            )}
+
+            {homeRows.slice(1).map((row, i) => (
+              <MovieRow
+                key={`dynamic-row-${i}`}
+                title={row.title}
+                endpoint={row.endpoint}
+                onMovieClick={setSelectedMovie}
+              />
+            ))}
+          </>
+        ) : (
+          <div className="flex justify-center py-20">
+            <div className="w-10 h-10 border-4 border-[#1DB954] border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        )}
       </div>
 
       {/* ── Track Detail Modal ───────────────────────────────────────────── */}

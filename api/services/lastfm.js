@@ -208,6 +208,10 @@ export class LastFmService {
     return this.fetchTracks('chart.gettoptracks');
   }
 
+  static async getTrendingByTag(tag) {
+    return this.fetchTracks('tag.gettoptracks', { tag });
+  }
+
   static async getByTag(tag) {
     // Instead of top tracks, let's fetch top albums for genres to act as playlists!
     return this.fetchAlbums('tag.gettopalbums', { tag });
@@ -346,4 +350,26 @@ export class LastFmService {
     await redisClient.set(cacheKey, JSON.stringify(validCombined), { EX: 24 * 60 * 60 });
     return validCombined;
   }
+
+  static async getArtistTopTags(artist) {
+    if (!artist) return [];
+    const apiKey = process.env.LASTFM_API_KEY;
+    const cacheKey = `lastfm-tags:${artist}`;
+    const cached = await redisClient.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+
+    try {
+      const response = await axios.get('http://ws.audioscrobbler.com/2.0/', {
+        params: { method: 'artist.gettoptags', artist, api_key: apiKey, format: 'json' }
+      });
+      let tags = response.data?.toptags?.tag || [];
+      if (!Array.isArray(tags)) tags = [tags];
+      const tagNames = tags.map(t => t.name.toLowerCase());
+      await redisClient.set(cacheKey, JSON.stringify(tagNames), { EX: 24 * 60 * 60 });
+      return tagNames;
+    } catch (e) {
+      return [];
+    }
+  }
 }
+
