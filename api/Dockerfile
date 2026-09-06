@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim
+FROM node:26-bookworm-slim
 
 # Install Python 3, pip, compilation tools, and OpenBLAS for FAISS/Implicit
 RUN apt-get update && apt-get install -y --no-install-recommends \
