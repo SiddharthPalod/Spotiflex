@@ -2,6 +2,30 @@ import { RecommendationService } from '../services/recommendation.js';
 import { LastFmService } from '../services/lastfm.js';
 import { MLService } from '../services/ml.js';
 import { prisma } from '../config/prisma.js';
+import { normalizeSongTitle, getPrimaryArtist, cleanSongTitle } from '../utils/trackHelper.js';
+
+function deduplicateAndFilterTracks(tracks, excludeIds = [], currentTrackId = '', currentTitle = '') {
+    const normCurrentTitle = normalizeSongTitle(currentTitle);
+    const excludeSet = new Set((excludeIds || []).map(id => String(id)));
+    if (currentTrackId) excludeSet.add(String(currentTrackId));
+
+    const seenNormalizedTitles = new Set();
+    if (normCurrentTitle) seenNormalizedTitles.add(normCurrentTitle);
+
+    const filtered = [];
+    for (const t of (tracks || [])) {
+        if (!t || !t.id) continue;
+        const tId = String(t.id);
+        const tNormTitle = normalizeSongTitle(t.title || t.name);
+
+        if (excludeSet.has(tId)) continue;
+        if (tNormTitle && seenNormalizedTitles.has(tNormTitle)) continue;
+
+        if (tNormTitle) seenNormalizedTitles.add(tNormTitle);
+        filtered.push(t);
+    }
+    return filtered;
+}
 
 export const getMadeForYou = async (req, res) => {
     // Hardcoded demo user for local development telemetry
@@ -35,7 +59,8 @@ export const getSimilar = async (req, res) => {
     const excludeIds = exclude ? exclude.split(',') : [];
 
     try {
-        const recommendations = await RecommendationService.getSimilarTracks(userId, trackId, excludeIds);
+        let recommendations = await RecommendationService.getSimilarTracks(userId, trackId, excludeIds);
+        recommendations = deduplicateAndFilterTracks(recommendations, excludeIds, trackId, title);
 
         if (recommendations.length === 0) {
             console.log(`[RecEngine] Track ${trackId} not in ML Index. Falling back to Last.fm contextual search.`);
@@ -45,10 +70,16 @@ export const getSimilar = async (req, res) => {
             
             const queryArtist = artist || (dbTrack && dbTrack.artist);
             const queryTitle = title || (dbTrack && dbTrack.title);
+            const primaryArtist = getPrimaryArtist(queryArtist);
+            const cleanTitle = cleanSongTitle(queryTitle);
             
             if (queryArtist) {
                 if (queryTitle) {
                     let fallback = await LastFmService.getSimilar(queryArtist, queryTitle);
+                    if ((!fallback || fallback.length === 0) && (primaryArtist !== queryArtist || cleanTitle !== queryTitle)) {
+                        fallback = await LastFmService.getSimilar(primaryArtist, cleanTitle);
+                    }
+
                     if (fallback && fallback.length > 0) {
                         // Asynchronously teach the ML Engine about this new track!
                         const similarTrackIds = fallback.map(t => t.id);
@@ -65,36 +96,40 @@ export const getSimilar = async (req, res) => {
                             console.error('[RecEngine] Failed to organically expand ML index:', err.message);
                         });
                         
-                        // Filter out tracks that the user has already played in this session
-                        if (excludeIds.length > 0) {
-                            fallback = fallback.filter(t => !excludeIds.includes(t.id));
+                        const filteredFallback = deduplicateAndFilterTracks(fallback, excludeIds, trackId, queryTitle);
+                        if (filteredFallback.length > 0) {
+                            return res.status(200).json(filteredFallback);
                         }
-                        
-                        return res.status(200).json(fallback);
                     }
                     console.log('[RecEngine] Last.fm returned 0 similar tracks. Falling back to Artist tracks.');
                 }
                 
-                // If similar tracks failed, just search for the artist to keep the same vibe!
-                let artistFallback = await LastFmService.search(queryArtist);
-                if (artistFallback && artistFallback.length > 0) {
-                    // Also teach ML Engine using artist tracks as neighbor references
-                    const fallbackTrackIds = artistFallback.map(t => t.id);
-                    MLService.getInstance().addTrackToIndex(trackId, fallbackTrackIds).then(res => {
-                        if (!res) return;
-                        if (res.status === 'added') {
-                            console.log(`[MLService] Successfully synthesized vector for ${queryTitle || queryArtist} using ${res.neighbors_used} artist fallback neighbors!`);
-                        } else if (res.status === 'skipped') {
-                            console.log(`[MLService] Skipped synthesis for ${queryTitle || queryArtist}: ${res.reason}`);
-                        }
-                    }).catch(err => {
-                        console.error('[RecEngine] Failed to organically expand ML index via artist fallback:', err.message);
-                    });
+                // If similar tracks failed, search for primary artist or queryArtist to keep the same vibe!
+                let artistFallback = await LastFmService.search(primaryArtist || queryArtist);
+                if ((!artistFallback || artistFallback.length === 0) && primaryArtist !== queryArtist) {
+                    artistFallback = await LastFmService.search(queryArtist);
+                }
 
-                    if (excludeIds.length > 0) {
-                        artistFallback = artistFallback.filter(t => !excludeIds.includes(t.id));
+                if (artistFallback && artistFallback.length > 0) {
+                    // Filter out tracks that are duplicates or already played
+                    const filteredArtistFallback = deduplicateAndFilterTracks(artistFallback, excludeIds, trackId, queryTitle);
+                    
+                    if (filteredArtistFallback.length > 0) {
+                        // Also teach ML Engine using artist tracks as neighbor references
+                        const fallbackTrackIds = filteredArtistFallback.map(t => t.id);
+                        MLService.getInstance().addTrackToIndex(trackId, fallbackTrackIds).then(res => {
+                            if (!res) return;
+                            if (res.status === 'added') {
+                                console.log(`[MLService] Successfully synthesized vector for ${queryTitle || queryArtist} using ${res.neighbors_used} artist fallback neighbors!`);
+                            } else if (res.status === 'skipped') {
+                                console.log(`[MLService] Skipped synthesis for ${queryTitle || queryArtist}: ${res.reason}`);
+                            }
+                        }).catch(err => {
+                            console.error('[RecEngine] Failed to organically expand ML index via artist fallback:', err.message);
+                        });
+
+                        return res.status(200).json(filteredArtistFallback);
                     }
-                    return res.status(200).json(artistFallback);
                 }
             } else {
                 console.log('[RecEngine] Track not found in DB either and no query params provided. Falling back to Trending.');
@@ -105,10 +140,8 @@ export const getSimilar = async (req, res) => {
                 // Teach ML Engine using global centroid fallback
                 MLService.getInstance().addTrackToIndex(trackId, []).catch(() => {});
             }
-            if (excludeIds.length > 0) {
-                trending = trending.filter(t => !excludeIds.includes(t.id));
-            }
-            return res.status(200).json(trending);
+            const filteredTrending = deduplicateAndFilterTracks(trending, excludeIds, trackId, queryTitle);
+            return res.status(200).json(filteredTrending);
         }
 
         res.status(200).json(recommendations);
@@ -126,10 +159,16 @@ export const getSpotiflexPicks = async (req, res) => {
             return res.status(200).json(trending.slice(0, 15));
         }
         let picks = await LastFmService.getSimilar(artist, title);
+        const primaryArtist = getPrimaryArtist(artist);
+        const cleanTitle = cleanSongTitle(title);
+        if ((!picks || picks.length === 0) && (primaryArtist !== artist || cleanTitle !== title)) {
+            picks = await LastFmService.getSimilar(primaryArtist, cleanTitle);
+        }
         if (!picks || picks.length === 0) {
             picks = await LastFmService.getTrending();
         }
-        res.status(200).json(picks.slice(0, 15));
+        const filteredPicks = deduplicateAndFilterTracks(picks, [], '', title);
+        res.status(200).json(filteredPicks.slice(0, 15));
     } catch (e) {
         res.status(500).json({ error: 'Failed to fetch Spotiflex picks' });
     }

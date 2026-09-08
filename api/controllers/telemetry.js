@@ -84,14 +84,14 @@ export const recordWatch = async (req, res) => {
 
   try {
     const user = await getOrCreateUser();
-    await upsertTrack(track);
+    const trackRecord = await upsertTrack(track);
 
     const history = await prisma.watchHistory.create({
       data: {
         userId:          user.id,
-        trackId:         track.id,
-        durationWatched: durationWatched || 0,
-        completed:       completed       || false,
+        trackId:         String(trackRecord.id),
+        durationWatched: Number(durationWatched) || 0,
+        completed:       Boolean(completed),
         skipSource,
       },
     });
@@ -108,24 +108,24 @@ export const recordWatch = async (req, res) => {
     
     import('../services/ml.js').then(({ MLService }) => {
       const ml = MLService.getInstance();
-      ml.sendFeedback(user.id, track.id, reward).catch(err => console.error('[RecEngine] Feedback Error:', err));
+      ml.sendFeedback(user.id, String(trackRecord.id), reward).catch(err => console.error('[RecEngine] Feedback Error:', err));
       
       // Asynchronously teach the ML engine about this track if it doesn't know it
       import('../services/lastfm.js').then(({ LastFmService }) => {
         LastFmService.getSimilar(track.artist, track.title).then(similar => {
           if (similar && similar.length > 0) {
             const similarTrackIds = similar.map(t => t.id);
-            ml.addTrackToIndex(track.id, similarTrackIds).catch(() => {});
+            ml.addTrackToIndex(String(trackRecord.id), similarTrackIds).catch(() => {});
           } else {
             LastFmService.search(track.artist).then(artistTracks => {
               const ids = (artistTracks || []).map(t => t.id);
-              ml.addTrackToIndex(track.id, ids).catch(() => {});
+              ml.addTrackToIndex(String(trackRecord.id), ids).catch(() => {});
             }).catch(() => {
-              ml.addTrackToIndex(track.id, []).catch(() => {});
+              ml.addTrackToIndex(String(trackRecord.id), []).catch(() => {});
             });
           }
         }).catch(() => {
-          ml.addTrackToIndex(track.id, []).catch(() => {});
+          ml.addTrackToIndex(String(trackRecord.id), []).catch(() => {});
         });
       });
     }).catch(() => {});
@@ -553,6 +553,11 @@ export const deletePlaylist = async (req, res) => {
     const { playlistId } = req.params;
     const user = await getOrCreateUser();
 
+    // Delete tracks inside playlist first
+    await prisma.playlistTrack.deleteMany({
+      where: { playlistId },
+    });
+
     await prisma.playlist.deleteMany({
       where: {
         id: playlistId,
@@ -561,6 +566,7 @@ export const deletePlaylist = async (req, res) => {
       },
     });
 
+    console.log(`[Telemetry] 🗑 Playlist deleted: ${playlistId} for user ${user.id}`);
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('[Telemetry] deletePlaylist Error:', error);
@@ -581,7 +587,6 @@ export const getWatchHistory = async (req, res) => {
     const history = await prisma.watchHistory.findMany({
       where: {
         userId: user.id,
-        durationWatched: { gt: 10 },
       },
       orderBy: { watchedAt: 'desc' },
       include: {
@@ -594,6 +599,7 @@ export const getWatchHistory = async (req, res) => {
     const seen = new Set();
     
     for (const h of history) {
+      if (!h.track) continue;
       if (!seen.has(h.trackId)) {
         seen.add(h.trackId);
         // Format identically to My List tracks

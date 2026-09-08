@@ -15,7 +15,8 @@ import {
   fetchAlbumTracks, 
   searchTracks, 
   addTrackToPlaylist, 
-  removeTrackFromPlaylist 
+  removeTrackFromPlaylist,
+  deletePlaylist
 } from '../services/movieService';
 import { usePlayerStore, useLikeStore, Track } from '../utils/store';
 import YouTubeImage from './YouTubeImage';
@@ -242,6 +243,23 @@ export default function MovieModal({ movie, onClose }: MovieModalProps) {
     }
   };
 
+  const [deletingPlaylist, setDeletingPlaylist] = useState(false);
+
+  const handleDeletePlaylist = async () => {
+    if (!window.confirm(`Are you sure you want to delete "${displayTitle}"?`)) return;
+    setDeletingPlaylist(true);
+    try {
+      await deletePlaylist(playlistId);
+      movie._onTracksUpdated?.();
+      onClose();
+    } catch (err) {
+      console.error('[DeletePlaylist] failed', err);
+      alert('Failed to delete playlist');
+    } finally {
+      setDeletingPlaylist(false);
+    }
+  };
+
   const isTrackInPlaylist = (trackId: string | number) => {
     return albumTracks.some(t => String(t.id) === String(trackId));
   };
@@ -351,6 +369,22 @@ export default function MovieModal({ movie, onClose }: MovieModalProps) {
                     >
                       <PlusIcon className={`h-5 w-5 transition-transform duration-200 ${showAddSongs ? 'rotate-45' : ''}`} />
                       <span>{showAddSongs ? 'Close Search' : 'Add Songs'}</span>
+                    </button>
+                  )}
+
+                  {/* Delete Playlist button for custom playlists */}
+                  {isPlaylist && (
+                    <button
+                      id="modal-delete-playlist"
+                      disabled={deletingPlaylist}
+                      className={`flex items-center justify-center rounded-full p-2.5 border-2 border-white/40 text-white hover:border-red-500 hover:text-red-500 hover:bg-red-500/10 transition-all duration-300 hover:scale-110 ${
+                        deletingPlaylist ? 'opacity-40 cursor-wait' : ''
+                      }`}
+                      aria-label="Delete Playlist"
+                      title="Delete Playlist"
+                      onClick={handleDeletePlaylist}
+                    >
+                      <TrashIcon className="h-6 w-6" />
                     </button>
                   )}
 
