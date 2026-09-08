@@ -3,7 +3,7 @@
  * Props mirror the Movie interface loosely so existing call-sites stay simple.
  */
 import { useRef } from 'react';
-import { PlayIcon, InformationCircleIcon } from '@heroicons/react/24/solid';
+import { PlayIcon, InformationCircleIcon, TrashIcon } from '@heroicons/react/24/solid';
 import { HeartIcon } from '@heroicons/react/24/solid';
 import { HeartIcon as HeartOutlineIcon } from '@heroicons/react/24/outline';
 import { Movie } from '../services/api.config';
@@ -18,9 +18,10 @@ interface MediaCardProps {
   onPlay: (e: React.MouseEvent) => void;
   onHeart: (e: React.MouseEvent) => void;
   onInfo: (e: React.MouseEvent) => void;
+  onDelete?: (e: React.MouseEvent) => void;
 }
 
-export default function MediaCard({ movie, isLiked = false, matchStr, className = '', onPlay, onHeart, onInfo }: MediaCardProps) {
+export default function MediaCard({ movie, isLiked = false, matchStr, className = '', onPlay, onHeart, onInfo, onDelete }: MediaCardProps) {
   const coverUrl = (movie.coverArtUrl || movie.poster_path || '');
   const hoverStartRef = useRef<number | null>(null);
 
@@ -75,20 +76,31 @@ export default function MediaCard({ movie, isLiked = false, matchStr, className 
               <PlayIcon className="h-4 w-4 text-black" />
             </button>
 
-            {/* Heart */}
-            <button
-              className={`flex items-center justify-center border-2 rounded-full p-1.5 transition-all duration-200 hover:scale-110 ${
-                isLiked
-                  ? 'border-[#1DB954] text-[#1DB954]'
-                  : 'border-white/40 text-white hover:border-[#1DB954] hover:text-[#1DB954]'
-              }`}
-              aria-label={isLiked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}
-              onClick={onHeart}
-            >
-              {isLiked
-                ? <HeartIcon className="h-3.5 w-3.5 fill-current" />
-                : <HeartOutlineIcon className="h-3.5 w-3.5" />}
-            </button>
+            {/* Heart or Delete */}
+            {onDelete ? (
+              <button
+                className="flex items-center justify-center border-2 border-white/40 hover:border-red-500 rounded-full p-1.5 text-white/70 hover:text-red-500 hover:bg-red-500/10 transition-all duration-200 hover:scale-110"
+                aria-label="Delete Playlist"
+                title="Delete Playlist"
+                onClick={onDelete}
+              >
+                <TrashIcon className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <button
+                className={`flex items-center justify-center border-2 rounded-full p-1.5 transition-all duration-200 hover:scale-110 ${
+                  isLiked
+                    ? 'border-[#1DB954] text-[#1DB954]'
+                    : 'border-white/40 text-white hover:border-[#1DB954] hover:text-[#1DB954]'
+                }`}
+                aria-label={isLiked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}
+                onClick={onHeart}
+              >
+                {isLiked
+                  ? <HeartIcon className="h-3.5 w-3.5 fill-current" />
+                  : <HeartOutlineIcon className="h-3.5 w-3.5" />}
+              </button>
+            )}
 
             {/* Info */}
             <button

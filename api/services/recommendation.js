@@ -1,6 +1,7 @@
 import { prisma } from '../config/prisma.js';
 import { MLService } from './ml.js';
 import { LastFmService } from './lastfm.js';
+import { normalizeSongTitle } from '../utils/trackHelper.js';
 
 export class RecommendationService {
     
@@ -51,7 +52,7 @@ export class RecommendationService {
 
                 const t = trackMap.get(tId);
                 if (t && t.coverArtUrl) {
-                    const uniqueKey = `${t.title}-${t.artist}`.toLowerCase();
+                    const uniqueKey = normalizeSongTitle(t.title) || `${t.title}-${t.artist}`.toLowerCase();
                     if (seen.has(uniqueKey)) continue;
                     seen.add(uniqueKey);
                     
@@ -91,9 +92,10 @@ export class RecommendationService {
             }
             
             // Filter out tracks that the user has already played in this session
-            if (excludeIds.length > 0) {
-                trackIds = trackIds.filter(id => !excludeIds.includes(id));
-            }
+            const excludeSet = new Set(excludeIds.map(id => String(id)));
+            excludeSet.add(String(trackId));
+
+            trackIds = trackIds.filter(id => !excludeSet.has(String(id)));
 
             if (trackIds.length === 0) {
                 return [];
@@ -109,9 +111,15 @@ export class RecommendationService {
             }
 
             const sortedTracks = [];
+            const seenTitles = new Set();
+
             for (const tId of trackIds) {
                 const t = trackMap.get(tId);
                 if (t && t.coverArtUrl) {
+                    const normTitle = normalizeSongTitle(t.title);
+                    if (normTitle && seenTitles.has(normTitle)) continue;
+                    if (normTitle) seenTitles.add(normTitle);
+
                     sortedTracks.push({
                         id: t.id,
                         title: t.title,

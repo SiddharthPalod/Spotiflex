@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { HeartIcon, PlusIcon } from '@heroicons/react/24/solid';
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { api, fetchAlbumTracks, createPlaylist } from '../services/movieService';
+import { api, fetchAlbumTracks, createPlaylist, deletePlaylist } from '../services/movieService';
 import { usePlayerStore, useLikeStore, Track } from '../utils/store';
 import MovieModal from '../components/MovieModal';
 import MediaCard from '../components/MediaCard';
@@ -181,6 +181,18 @@ const MyList = () => {
     }
   };
 
+  const handleDeleteCustomPlaylist = async (e: React.MouseEvent, playlist: CustomPlaylist) => {
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to delete "${playlist.name}"?`)) return;
+    try {
+      await deletePlaylist(playlist.id);
+      load();
+    } catch (err) {
+      console.error('Failed to delete playlist', err);
+      alert('Failed to delete playlist');
+    }
+  };
+
   // ── Virtual "Liked Songs" album card ─────────────────────────────────────
   const likedSongsCard: Movie = {
     id: '__liked-songs__',
@@ -281,7 +293,7 @@ const MyList = () => {
                     movie={likedSongsCard}
                     isLiked={true}
                     onPlay={(e) => { e.stopPropagation(); handlePlayLikedSongs(); }}
-                    onHeart={(e) => e.stopPropagation()} // can't un-heart the whole playlist
+                    onHeart={(e) => e.stopPropagation()}
                     onInfo={(e) => {
                       e.stopPropagation();
                       setSelectedMovie({
@@ -321,6 +333,7 @@ const MyList = () => {
                       handlePlayCustomPlaylist(p);
                     }}
                     onHeart={(e) => e.stopPropagation()}
+                    onDelete={(e) => handleDeleteCustomPlaylist(e, p)}
                     onInfo={(e) => {
                       e.stopPropagation();
                       setSelectedMovie(movieCard);
