@@ -9,13 +9,17 @@ datasource db {
 
 // ── Users ────────────────────────────────────────────────────────────────
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  email        String   // Encrypted email (AES-256-GCM)
+  emailHash    String?  @unique // Blind index HMAC-SHA256 for fast/secure lookups
+  passwordHash String?
+  name         String?
+  avatar       String?  @default("https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Relations
+  profiles      Profile[]
   history       WatchHistory[]
   likes         Like[]
   playlists     Playlist[]
@@ -23,6 +27,33 @@ model User {
   clickHistory  ClickHistory[]
   hoverHistory  HoverHistory[]
 }
+
+// ── Family / Sub-Profiles ────────────────────────────────────────────────
+model Profile {
+  id        String   @id @default(uuid())
+  name      String
+  avatar    String   @default("https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png")
+  isKids    Boolean  @default(false)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ── Auth OTP Verification ────────────────────────────────────────────────
+model OtpCode {
+  id        String   @id @default(uuid())
+  emailHash String
+  code      String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([emailHash])
+}
+
 
 // ── Tracks (Local Cache for Spotify/YouTube metadata) ────────────────────
 model Track {

@@ -29,7 +29,7 @@ function deduplicateAndFilterTracks(tracks, excludeIds = [], currentTrackId = ''
 
 export const getMadeForYou = async (req, res) => {
     // Hardcoded demo user for local development telemetry
-    const userId = 'alok-nath-1';
+    const userId = req.user?.id || 'alok-nath-1';
 
     try {
         const recommendations = await RecommendationService.getMadeForYou(userId);
@@ -49,7 +49,7 @@ export const getMadeForYou = async (req, res) => {
 };
 
 export const getSimilar = async (req, res) => {
-    const userId = 'alok-nath-1';
+    const userId = req.user?.id || 'alok-nath-1';
     const { trackId, artist, title, exclude } = req.query;
     
     if (!trackId) {
@@ -175,7 +175,7 @@ export const getSpotiflexPicks = async (req, res) => {
 };
 
 export const getHomeRows = async (req, res) => {
-    const userId = 'alok-nath-1'; // simulated
+    const userId = req.user?.id || 'alok-nath-1'; // simulated
     try {
         const history = await prisma.watchHistory.findMany({
             where: { userId },

@@ -2,21 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { BellIcon, MagnifyingGlassIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import { DEFAULT_AVATAR } from '../utils/avatarUtils';
-
-const PROFILE_NAMES = ['Deep'];
+import { useAuthStore } from '../utils/authStore';
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [profiles] = useState(() =>
-    PROFILE_NAMES.map(name => ({
-      name,
-      avatar: DEFAULT_AVATAR
-    }))
-  );
+  const { user, profiles, activeProfile, setActiveProfile } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/signup';
+  const isAuthPage = ['/login', '/signup', '/signout', '/profiles', '/manage-profiles'].includes(location.pathname);
+
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -200,36 +195,57 @@ const Navbar = () => {
             <div className="group relative ml-[6px]">
               <div className="flex items-center gap-2 cursor-pointer py-[2px]">
                 <img
-                  src={profiles[0].avatar}
-                  alt="Profile"
-                  className="h-[32px] w-[32px] rounded ring-2 ring-transparent group-hover:ring-[#1DB954]/60 transition-all duration-200"
+                  src={activeProfile?.avatar || user?.avatar || DEFAULT_AVATAR}
+                  alt={activeProfile?.name || user?.name || 'Profile'}
+                  className="h-[32px] w-[32px] rounded-md object-cover ring-2 ring-transparent group-hover:ring-[#1DB954]/60 transition-all duration-200"
                 />
                 <div className="border-t-[4px] border-t-white/70 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent transition-transform duration-200 group-hover:rotate-180 mt-[2px]" />
               </div>
 
               {/* Dropdown panel */}
               <div className="absolute right-0 top-full pt-[8px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                <div className="bg-[rgba(10,10,10,0.97)] border border-white/10 rounded-lg min-w-[220px] py-[10px] shadow-2xl">
-                  {profiles.map((profile, index) => (
-                    <Link
-                      key={index}
-                      to="/profile"
-                      className="flex items-center px-[12px] py-[7px] text-[13px] text-white hover:bg-white/5 transition-colors"
-                    >
-                      <img
-                        src={profile.avatar}
-                        alt={profile.name}
-                        className="h-[32px] w-[32px] rounded mr-[10px]"
-                      />
-                      <span>{profile.name}</span>
-                    </Link>
-                  ))}
-                  <div className="h-[1px] bg-white/10 my-[8px] mx-[12px]" />
+                <div className="bg-[rgba(10,10,10,0.97)] border border-white/10 rounded-xl min-w-[220px] py-[10px] shadow-2xl">
+                  {/* Active Profile Info */}
+                  <div className="flex items-center px-[14px] py-[8px] text-[13px] text-white">
+                    <img
+                      src={activeProfile?.avatar || user?.avatar || DEFAULT_AVATAR}
+                      alt={activeProfile?.name || user?.name || 'Profile'}
+                      className="h-[34px] w-[34px] rounded-lg object-cover mr-[10px]"
+                    />
+                    <div className="flex flex-col">
+                      <span className="font-bold">{activeProfile?.name || user?.name || 'Spotiflex Member'}</span>
+                      <span className="text-[11px] text-white/40">{user?.email}</span>
+                    </div>
+                  </div>
+
+                  {/* Family Profiles list */}
+                  {profiles.length > 1 && (
+                    <div className="border-t border-white/10 my-[6px] py-[4px]">
+                      <span className="text-[10px] uppercase font-bold text-white/40 px-[14px] py-[2px] block">
+                        Family Profiles
+                      </span>
+                      {profiles
+                        .filter((p) => p.id !== activeProfile?.id)
+                        .map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => setActiveProfile(p)}
+                            className="w-full flex items-center px-[14px] py-[6px] text-[12px] text-white/80 hover:text-white hover:bg-white/5 transition-colors cursor-pointer text-left"
+                          >
+                            <img src={p.avatar || DEFAULT_AVATAR} alt={p.name} className="w-5 h-5 rounded object-cover mr-2" />
+                            <span>{p.name}</span>
+                            {p.isKids && <span className="ml-1.5 text-[9px] bg-yellow-400 text-black px-1 rounded font-bold">KIDS</span>}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+
+                  <div className="h-[1px] bg-white/10 my-[6px] mx-[12px]" />
+                  <Link to="/profiles"        className="dropdown-link">Switch Profile</Link>
                   <Link to="/manage-profiles" className="dropdown-link">Manage Profiles</Link>
-                  <Link to="/account"         className="dropdown-link">Account</Link>
-                  <Link to="/help"            className="dropdown-link">Help Center</Link>
-                  <div className="h-[1px] bg-white/10 my-[8px] mx-[12px]" />
-                  <Link to="/signout"         className="dropdown-link">Sign out of Spotiflex</Link>
+                  <Link to="/account"         className="dropdown-link">Account Settings</Link>
+                  <div className="h-[1px] bg-white/10 my-[6px] mx-[12px]" />
+                  <Link to="/signout"         className="dropdown-link text-red-400 hover:text-red-300">Sign out of Spotiflex</Link>
                 </div>
               </div>
             </div>

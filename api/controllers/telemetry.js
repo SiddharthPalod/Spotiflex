@@ -12,13 +12,22 @@ const LIKED_SONGS_PLAYLIST_NAME = 'Liked Songs';
 
 // ── Shared Helpers ───────────────────────────────────────────────────────────
 
-async function getOrCreateUser() {
-  return prisma.user.upsert({
-    where:  { email: ALOK_NATH.email },
-    update: {},
-    create: ALOK_NATH,
+async function getOrCreateUser(reqUser) {
+  const targetId = reqUser?.id || ALOK_NATH.id;
+  const existing = await prisma.user.findUnique({
+    where: { id: targetId },
+  });
+  if (existing) return existing;
+
+  return prisma.user.create({
+    data: {
+      id: targetId,
+      name: reqUser?.name || ALOK_NATH.name,
+      email: reqUser?.email || ALOK_NATH.email,
+    },
   });
 }
+
 
 /**
  * Ensure a Track row exists. Stores isAlbum and albumId flags for grouping.
@@ -83,7 +92,7 @@ export const recordWatch = async (req, res) => {
   }
 
   try {
-    const user = await getOrCreateUser();
+    const user = await getOrCreateUser(req.user);
     const trackRecord = await upsertTrack(track);
 
     const history = await prisma.watchHistory.create({
@@ -158,7 +167,7 @@ export const recordLike = async (req, res) => {
   }
 
   try {
-    const user     = await getOrCreateUser();
+    const user     = await getOrCreateUser(req.user);
     const playlist = await getLikedSongsPlaylist(user.id);
     const albumId  = String(track.id); // always a string for Prisma
 
@@ -268,7 +277,7 @@ export const recordLike = async (req, res) => {
  */
 export const getMyList = async (req, res) => {
   try {
-    const user = await getOrCreateUser();
+    const user = await getOrCreateUser(req.user);
 
     // 1. Fetch Liked Songs playlist
     const likedPlaylist = await prisma.playlist.findFirst({
@@ -363,7 +372,7 @@ export const createPlaylist = async (req, res) => {
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Playlist name is required' });
     }
-    const user = await getOrCreateUser();
+    const user = await getOrCreateUser(req.user);
     const playlist = await prisma.playlist.create({
       data: {
         name: name.trim(),
@@ -400,7 +409,7 @@ export const createPlaylist = async (req, res) => {
  */
 export const getPlaylists = async (req, res) => {
   try {
-    const user = await getOrCreateUser();
+    const user = await getOrCreateUser(req.user);
     const customPlaylists = await prisma.playlist.findMany({
       where: {
         userId: user.id,
@@ -454,7 +463,7 @@ export const addTrackToPlaylist = async (req, res) => {
       return res.status(400).json({ error: 'Track is required' });
     }
 
-    const user = await getOrCreateUser();
+    const user = await getOrCreateUser(req.user);
     const playlist = await prisma.playlist.findFirst({
       where: { id: playlistId, userId: user.id },
     });
@@ -527,7 +536,7 @@ export const addTrackToPlaylist = async (req, res) => {
 export const removeTrackFromPlaylist = async (req, res) => {
   try {
     const { playlistId, trackId } = req.params;
-    const user = await getOrCreateUser();
+    const user = await getOrCreateUser(req.user);
 
     await prisma.playlistTrack.deleteMany({
       where: {
@@ -551,7 +560,7 @@ export const removeTrackFromPlaylist = async (req, res) => {
 export const deletePlaylist = async (req, res) => {
   try {
     const { playlistId } = req.params;
-    const user = await getOrCreateUser();
+    const user = await getOrCreateUser(req.user);
 
     // Delete tracks inside playlist first
     await prisma.playlistTrack.deleteMany({
@@ -581,7 +590,7 @@ export const deletePlaylist = async (req, res) => {
  */
 export const getWatchHistory = async (req, res) => {
   try {
-    const user = await getOrCreateUser();
+    const user = await getOrCreateUser(req.user);
 
     // Fetch the history, ordered by watchedAt descending
     const history = await prisma.watchHistory.findMany({
@@ -635,7 +644,7 @@ export const recordSearch = async (req, res) => {
   }
 
   try {
-    const user = await getOrCreateUser();
+    const user = await getOrCreateUser(req.user);
 
     const record = await prisma.searchHistory.create({
       data: { userId: user.id, query, resultCount },
@@ -660,7 +669,7 @@ export const recordClick = async (req, res) => {
   }
 
   try {
-    const user = await getOrCreateUser();
+    const user = await getOrCreateUser(req.user);
     await upsertTrack(track);
 
     const record = await prisma.clickHistory.create({
@@ -695,7 +704,7 @@ export const recordHover = async (req, res) => {
   }
 
   try {
-    const user = await getOrCreateUser();
+    const user = await getOrCreateUser(req.user);
     await upsertTrack(track, { isAlbum: track.isAlbum || false });
 
     await prisma.hoverHistory.create({

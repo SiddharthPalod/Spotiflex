@@ -1,4 +1,5 @@
 import express from 'express';
+import { optionalAuth } from '../middlewares/auth.js';
 import { 
   recordWatch, 
   recordLike, 
@@ -15,6 +16,8 @@ import {
 } from '../controllers/telemetry.js';
 
 const router = express.Router();
+router.use(optionalAuth);
+
 
 // POST /api/telemetry/watch   — Implicit feedback: how long was a track watched
 router.post('/watch',    recordWatch);
