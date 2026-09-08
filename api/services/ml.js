@@ -1,5 +1,9 @@
 import { spawn } from 'child_process';
 import { resolve, join } from 'path';
+import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 export class MLService {
     static instance = null;
@@ -10,17 +14,35 @@ export class MLService {
         this.callbacks = new Map();
         this.reqIdCounter = 1;
         
-        // ML Engine lives in the sibling directory (or path specified by ML_DIR)
-        const mlDir = process.env.ML_DIR ? resolve(process.env.ML_DIR) : resolve(process.cwd(), '../ml');
+        // Find ML directory reliably across different start directories
+        const candidates = [
+            process.env.ML_DIR ? resolve(process.env.ML_DIR) : null,
+            resolve(__dirname, '../../ml'),
+            resolve(process.cwd(), '../ml'),
+            resolve(process.cwd(), 'ml'),
+            resolve(process.cwd(), 'spotiflix/ml')
+        ].filter(Boolean);
+
+        let mlDir = candidates.find(dir => existsSync(join(dir, 'src/serving/daemon.py')));
+        if (!mlDir) {
+            mlDir = candidates[0];
+            console.warn(`[MLService] Could not find daemon.py in candidate paths, defaulting to ${mlDir}`);
+        }
+
         const scriptPath = join(mlDir, 'src/serving/daemon.py');
         const pythonBin = process.env.PYTHON_BIN || 'python';
         
-        console.log(`[MLService] Booting Persistent Python Daemon using ${pythonBin}...`);
+        console.log(`[MLService] Booting Persistent Python Daemon from ${mlDir} using ${pythonBin}...`);
         this.process = spawn(pythonBin, [scriptPath], {
             cwd: mlDir,
             env: { ...process.env, OPENBLAS_NUM_THREADS: '1' },
             // Route python stderr directly to Node's console so we see crash logs
             stdio: ['pipe', 'pipe', 'inherit']
+        });
+
+        this.process.on('error', (err) => {
+            console.error(`[MLService] Failed to spawn Python process:`, err.message);
+            this.ready = false;
         });
         
         let buffer = '';

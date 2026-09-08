@@ -83,17 +83,14 @@ def main():
 
         def flush_delta():
             """
-            Persist delta vectors + updated track_index + FAISS index to disk.
-            Cost: O(delta_size) not O(total_tracks).  Called every add_track
-            and on graceful shutdown.
+            Persist delta vectors + updated track_index to disk.
+            Cost: O(delta_size) not O(total_tracks). Called every add_track
+            and on graceful shutdown. Base FAISS index remains untouched,
+            and delta vectors are re-attached to FAISS in memory on boot.
             """
-            import faiss as _faiss
             if delta_list:
                 np.save(delta_path, np.array(delta_list, dtype=np.float32))
             joblib.dump(track_index, os.path.join(FEATURE_STORE_DIR, 'track_index.pkl'))
-            _faiss.write_index(
-                cg.faiss_index, os.path.join(FEATURE_STORE_DIR, 'track_faiss.index')
-            )
 
         # ── Graceful Shutdown ─────────────────────────────────────────────────
         # Docker sends SIGTERM on `docker stop` / `docker compose down`.
