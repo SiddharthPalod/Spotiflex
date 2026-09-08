@@ -1,7 +1,10 @@
 import express from 'express';
+import { optionalAuth } from '../middlewares/auth.js';
 import { getMadeForYou, getSimilar, getHomeRows, getSpotiflexPicks } from '../controllers/recommendation.js';
 
 const router = express.Router();
+router.use(optionalAuth);
+
 
 // GET /api/recommendations/home-rows
 router.get('/home-rows', getHomeRows);

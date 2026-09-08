@@ -70,24 +70,26 @@ export default function VideoPlayer() {
         const excludeIds = Array.from(playedIdsRef.current);
         try {
           const recs = await fetchSimilarTracks(String(currentTrack.id), currentTrack.artist, currentTrack.title, excludeIds);
-          next = recs.find((t: any) => {
+          const found = recs.find((t: any) => {
             const tId = String(t.id);
             const tNorm = normalizeSongTitle(t.title || t.name);
             return !playedIdsRef.current.has(tId) && (!tNorm || !playedTitlesRef.current.has(tNorm));
-          }) || null;
-          nextPlaylist = recs;
+          });
+          next = found ? ({ ...found, id: String(found.id) } as any) : null;
+          nextPlaylist = recs.map((r: any) => ({ ...r, id: String(r.id) })) as any;
         } catch {}
       }
 
       if (next) {
-        let yId = next.youtubeVideoId;
+        let yId: string | undefined = next.youtubeVideoId || undefined;
         if (!yId) {
           try {
-            yId = await fetchVideoId(next.title, next.artist);
+            const fetched = await fetchVideoId(next.title, next.artist);
+            yId = fetched || undefined;
           } catch {}
         }
         prefetchedNextTrackRef.current = {
-          track: { ...next, youtubeVideoId: yId || undefined },
+          track: { ...next, id: String(next.id), youtubeVideoId: yId },
           playlist: nextPlaylist,
         };
       }
