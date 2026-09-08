@@ -43,8 +43,12 @@ export class RecommendationService {
 
             const sortedTracks = [];
             const seen = new Set();
+            const historySet = new Set(historyTrackIds);
             
             for (const tId of trackIds) {
+                // Avoid recommending tracks the user has already watched recently
+                if (historySet.has(tId)) continue;
+
                 const t = trackMap.get(tId);
                 if (t && t.coverArtUrl) {
                     const uniqueKey = `${t.title}-${t.artist}`.toLowerCase();

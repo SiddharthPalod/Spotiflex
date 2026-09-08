@@ -29,6 +29,15 @@ class CandidateGenerator:
         else:
             self.faiss_index.hnsw.efSearch = 200
             
+        # Dynamically attach runtime delta vectors to FAISS in memory if present
+        delta_path = os.path.join(FEATURE_STORE_DIR, 'track_vectors_delta.npy')
+        if os.path.exists(delta_path):
+            delta_arr = np.load(delta_path)
+            if len(delta_arr) > 0 and self.faiss_index.ntotal < len(self.track_index):
+                missing_count = len(self.track_index) - self.faiss_index.ntotal
+                delta_to_add = delta_arr[-missing_count:].astype(np.float32)
+                self.faiss_index.add(delta_to_add)
+
         # Load ALS
         als_user_factors = np.load(os.path.join(FEATURE_STORE_DIR, 'als_user_factors.npy'))
         als_track_factors = np.load(os.path.join(FEATURE_STORE_DIR, 'als_track_factors.npy'))
