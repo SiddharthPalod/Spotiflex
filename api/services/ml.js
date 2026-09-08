@@ -159,7 +159,13 @@ export class MLService {
     }
 
     async sendFeedback(userId, trackId, reward) {
-        if (!this.ready) return;
+        if (!this.ready) {
+            try {
+                await this.waitUntilReady();
+            } catch {
+                return { status: 'skipped', reason: 'ML Daemon not ready' };
+            }
+        }
         return new Promise((resolve, reject) => {
             const reqId = this.reqIdCounter++;
             
@@ -179,8 +185,15 @@ export class MLService {
         });
     }
 
-    async addTrackToIndex(trackId, similarTrackIds) {
-        if (!this.ready) return;
+    async addTrackToIndex(trackId, similarTrackIds = []) {
+        if (!this.ready) {
+            console.warn(`[MLService] Daemon still loading — waiting for FAISS index before adding track...`);
+            try {
+                await this.waitUntilReady();
+            } catch {
+                return { status: 'skipped', reason: 'ML Daemon not ready' };
+            }
+        }
         return new Promise((resolve, reject) => {
             const reqId = this.reqIdCounter++;
             

@@ -53,6 +53,7 @@ export const getSimilar = async (req, res) => {
                         // Asynchronously teach the ML Engine about this new track!
                         const similarTrackIds = fallback.map(t => t.id);
                         MLService.getInstance().addTrackToIndex(trackId, similarTrackIds).then(res => {
+                            if (!res) return;
                             if (res.status === 'added') {
                                 console.log(`[MLService] Successfully synthesized vector for ${queryTitle} using ${res.neighbors_used} Last.fm neighbors!`);
                             } else if (res.status === 'skipped') {
@@ -77,6 +78,19 @@ export const getSimilar = async (req, res) => {
                 // If similar tracks failed, just search for the artist to keep the same vibe!
                 let artistFallback = await LastFmService.search(queryArtist);
                 if (artistFallback && artistFallback.length > 0) {
+                    // Also teach ML Engine using artist tracks as neighbor references
+                    const fallbackTrackIds = artistFallback.map(t => t.id);
+                    MLService.getInstance().addTrackToIndex(trackId, fallbackTrackIds).then(res => {
+                        if (!res) return;
+                        if (res.status === 'added') {
+                            console.log(`[MLService] Successfully synthesized vector for ${queryTitle || queryArtist} using ${res.neighbors_used} artist fallback neighbors!`);
+                        } else if (res.status === 'skipped') {
+                            console.log(`[MLService] Skipped synthesis for ${queryTitle || queryArtist}: ${res.reason}`);
+                        }
+                    }).catch(err => {
+                        console.error('[RecEngine] Failed to organically expand ML index via artist fallback:', err.message);
+                    });
+
                     if (excludeIds.length > 0) {
                         artistFallback = artistFallback.filter(t => !excludeIds.includes(t.id));
                     }
@@ -87,6 +101,10 @@ export const getSimilar = async (req, res) => {
             }
             
             let trending = await LastFmService.getTrending();
+            if (trackId) {
+                // Teach ML Engine using global centroid fallback
+                MLService.getInstance().addTrackToIndex(trackId, []).catch(() => {});
+            }
             if (excludeIds.length > 0) {
                 trending = trending.filter(t => !excludeIds.includes(t.id));
             }

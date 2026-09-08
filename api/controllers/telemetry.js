@@ -116,8 +116,17 @@ export const recordWatch = async (req, res) => {
           if (similar && similar.length > 0) {
             const similarTrackIds = similar.map(t => t.id);
             ml.addTrackToIndex(track.id, similarTrackIds).catch(() => {});
+          } else {
+            LastFmService.search(track.artist).then(artistTracks => {
+              const ids = (artistTracks || []).map(t => t.id);
+              ml.addTrackToIndex(track.id, ids).catch(() => {});
+            }).catch(() => {
+              ml.addTrackToIndex(track.id, []).catch(() => {});
+            });
           }
-        }).catch(() => {});
+        }).catch(() => {
+          ml.addTrackToIndex(track.id, []).catch(() => {});
+        });
       });
     }).catch(() => {});
 
@@ -229,8 +238,17 @@ export const recordLike = async (req, res) => {
                 if (similar && similar.length > 0) {
                   const similarTrackIds = similar.map(t => t.id);
                   ml.addTrackToIndex(singleId, similarTrackIds).catch(() => {});
+                } else {
+                  LastFmService.search(singleTrack.artist).then(artistTracks => {
+                    const ids = (artistTracks || []).map(t => t.id);
+                    ml.addTrackToIndex(singleId, ids).catch(() => {});
+                  }).catch(() => {
+                    ml.addTrackToIndex(singleId, []).catch(() => {});
+                  });
                 }
-              }).catch(() => {});
+              }).catch(() => {
+                ml.addTrackToIndex(singleId, []).catch(() => {});
+              });
             });
         }
       }).catch(() => {});
