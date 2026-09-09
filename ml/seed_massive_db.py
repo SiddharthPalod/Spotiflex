@@ -50,6 +50,9 @@ cursor.executemany('''
 conn.commit()
 
 
+def format_ms(dt):
+    return int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
+
 # 2. Generate Users
 print(f"Generating {NUM_USERS} synthetic users...")
 users = []
@@ -57,7 +60,7 @@ user_tuples = []
 for i in range(NUM_USERS):
     user_id = str(uuid.uuid4())
     users.append(user_id)
-    now_ts = datetime.now().isoformat()
+    now_ts = format_ms(datetime.now(timezone.utc))
     user_tuples.append((user_id, f"SyntheticUser{i}@kaggle.local", f"ML User {i}", now_ts, now_ts))
 
 cursor.executemany('''
@@ -92,7 +95,7 @@ conn.commit()
 # 4. Generate Watches
 print(f"Generating {NUM_WATCHES} watches...")
 watch_tuples = []
-now = datetime.now()
+now = datetime.now(timezone.utc)
 for _ in range(NUM_WATCHES):
     uid = random.choice(users)
     tid = get_random_track_id()
@@ -102,7 +105,7 @@ for _ in range(NUM_WATCHES):
     skip = None if completed else random.choice(['manual', 'closed', 'next'])
     
     # timestamp within last 30 days
-    ts = (now - timedelta(days=random.randint(0, 30), minutes=random.randint(0, 1000))).isoformat()
+    ts = format_ms(now - timedelta(days=random.randint(0, 30), minutes=random.randint(0, 1000)))
     watch_tuples.append((wid, uid, tid, duration, completed, skip, ts))
 
 cursor.executemany('''
@@ -119,7 +122,7 @@ for _ in range(NUM_HOVERS):
     tid = get_random_track_id()
     hid = str(uuid.uuid4())
     dur = random.randint(500, 8000)
-    ts = (now - timedelta(days=random.randint(0, 30))).isoformat()
+    ts = format_ms(now - timedelta(days=random.randint(0, 30)))
     hover_tuples.append((hid, uid, tid, 0, dur, ts))
 
 cursor.executemany('''
@@ -136,7 +139,7 @@ for _ in range(NUM_CLICKS):
     tid = get_random_track_id()
     cid = str(uuid.uuid4())
     source = random.choice(['browse', 'search', 'recommendation'])
-    ts = (now - timedelta(days=random.randint(0, 30))).isoformat()
+    ts = format_ms(now - timedelta(days=random.randint(0, 30)))
     click_tuples.append((cid, uid, tid, 0, source, ts))
 
 cursor.executemany('''
