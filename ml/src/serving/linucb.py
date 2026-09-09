@@ -48,7 +48,7 @@ class HybridLinUCB:
         
     def _save_state(self, user_id, A, b):
         cursor = self.conn.cursor()
-        now = datetime.utcnow().isoformat()
+        now = int(time.time() * 1000)
         cursor.execute('''
             INSERT INTO LinUCBState (userId, A, b, updatedAt)
             VALUES (?, ?, ?, ?)
