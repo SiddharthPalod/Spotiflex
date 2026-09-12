@@ -49,10 +49,22 @@ export function getMailer() {
   return null;
 }
 
-/**
- * Sends a clean, deliverability-optimized OTP verification email
- */
 export async function sendOtpEmail(toEmail, otpCode) {
+  // Check if recipient is a test/dummy email address to avoid burning API / SMTP quotas
+  const isTestEmail = 
+    toEmail.endsWith('@spotiflix.com') ||
+    toEmail.endsWith('@spotiflix.local') ||
+    toEmail.endsWith('@example.com') ||
+    toEmail.endsWith('@test.com') ||
+    toEmail.endsWith('@fake.local') ||
+    toEmail.startsWith('tester_') ||
+    toEmail.startsWith('test_');
+
+  if (isTestEmail) {
+    console.log(`[Dev Mailer] Skipping external SMTP dispatch for test email (${toEmail}): OTP is ${otpCode}`);
+    return { messageId: 'simulated-test-otp' };
+  }
+
   const mailer = getMailer();
 
   if (!mailer) {
