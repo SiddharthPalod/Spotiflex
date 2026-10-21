@@ -34,7 +34,7 @@ jobs:
           output-file: hadolint.sarif
           no-fail: true
       - name: Upload Hadolint scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: hadolint.sarif
   bandit:
@@ -62,7 +62,7 @@ jobs:
         with:
           args: . --sarif --output njsscan.sarif
       - name: Upload njsscan scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: njsscan.sarif
   dependency-review:
@@ -90,6 +90,6 @@ jobs:
         with:
           scan-args: --format=sarif --output=osv-results.sarif .
       - name: Upload OSV-Scanner results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: osv-results.sarif
