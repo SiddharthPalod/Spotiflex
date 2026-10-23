@@ -61,7 +61,16 @@ const MyList = () => {
       .finally(() => setIsLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const handleProfileChange = () => {
+      load();
+    };
+    window.addEventListener('spotiflix:profile-changed', handleProfileChange);
+    return () => {
+      window.removeEventListener('spotiflix:profile-changed', handleProfileChange);
+    };
+  }, []);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 

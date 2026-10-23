@@ -30,9 +30,10 @@ function deduplicateAndFilterTracks(tracks, excludeIds = [], currentTrackId = ''
 export const getMadeForYou = async (req, res) => {
     // Hardcoded demo user for local development telemetry
     const userId = req.user?.id || 'alok-nath-1';
+    const profileId = req.profileId || req.headers['x-profile-id'] || null;
 
     try {
-        const recommendations = await RecommendationService.getMadeForYou(userId);
+        const recommendations = await RecommendationService.getMadeForYou(userId, profileId);
 
         // Fallback to global top charts if the ML engine returns nothing (Cold Start with 0 history)
         if (recommendations.length === 0) {

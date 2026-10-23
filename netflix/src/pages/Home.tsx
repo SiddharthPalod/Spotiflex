@@ -34,6 +34,10 @@ const Home = () => {
       }
     };
     loadData();
+    window.addEventListener('spotiflix:profile-changed', loadData);
+    return () => {
+      window.removeEventListener('spotiflix:profile-changed', loadData);
+    };
   }, []);
 
   if (isLoading) {

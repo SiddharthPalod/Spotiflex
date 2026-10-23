@@ -23,22 +23,21 @@ def main():
         bandit = HybridLinUCB()
 
         # ── Vector Store ─────────────────────────────────────────────────────
-        # user_profiles: pure read, never written → safe to mmap forever.
-        user_profiles = np.load(
-            os.path.join(FEATURE_STORE_DIR, 'user_profiles.npy'), mmap_mode='r'
-        )
+        # User profiles: loaded dynamically from Qdrant; fallback to local mmap if file exists
+        user_profiles_path = os.path.join(FEATURE_STORE_DIR, 'user_profiles.npy')
+        if os.path.exists(user_profiles_path):
+            user_profiles = np.load(user_profiles_path, mmap_mode='r')
+        else:
+            user_profiles = None
 
-        # track_vectors: split into two tiers so add_track never rewrites the
-        # full 914 MB base file.
-        base_vectors = np.load(
-            os.path.join(FEATURE_STORE_DIR, 'track_vectors.npy'), mmap_mode='r'
-        )
-        base_count = len(base_vectors)
-
-        # Pre-warm the mmap by touching evenly-spaced rows across the file.
-        _warmup_indices = np.linspace(0, base_count - 1, num=500, dtype=int)
-        _ = base_vectors[_warmup_indices].sum()
-        del _warmup_indices, _
+        # Track vectors: loaded dynamically from Qdrant; fallback to local mmap if file exists
+        track_vectors_path = os.path.join(FEATURE_STORE_DIR, 'track_vectors.npy')
+        if os.path.exists(track_vectors_path):
+            base_vectors = np.load(track_vectors_path, mmap_mode='r')
+            base_count = len(base_vectors)
+        else:
+            base_vectors = None
+            base_count = 0
 
         # ── Fix 3: Append-Only Delta Log with Dual Fallback ────────────────────
         delta_bin_path = os.path.join(FEATURE_STORE_DIR, 'track_vectors_delta.bin')
@@ -76,20 +75,27 @@ def main():
         # Synchronization lock for modifying shared track indices and FAISS
         data_lock = threading.Lock()
 
-        # ── Vector Access Helpers ─────────────────────────────────────────────
+        # ── Vector Access Helpers (Primary: Qdrant, Fallback: Local Base) ─────
 
         def get_vec(idx):
-            """Single-row lookup — routes to mmap base or RAM delta."""
+            """Single-row vector lookup — queries Qdrant first, falls back to local tier."""
+            if cg.qdrant and cg.qdrant.client:
+                qv = cg.qdrant.get_track_vector(idx)
+                if qv is not None:
+                    return qv
             if idx < base_count:
                 return base_vectors[idx]
             return delta_list[idx - base_count]
 
         def get_vecs(indices):
             """
-            Batch lookup, returns float32 ndarray of shape (len(indices), dim).
-            Hot path: all indices in base → native mmap fancy indexing (fast).
-            Mixed path: any index in delta → per-row loop (delta is rare/small).
+            Batch vector lookup — queries Qdrant first, falls back to local tier.
             """
+            if cg.qdrant and cg.qdrant.client:
+                q_batch = cg.qdrant.get_vectors_batch(indices)
+                if q_batch is not None and len(q_batch) == len(indices):
+                    return q_batch
+
             if not delta_list or all(i < base_count for i in indices):
                 return base_vectors[indices].astype(np.float32)
             return np.array([get_vec(i) for i in indices], dtype=np.float32)
@@ -154,11 +160,17 @@ def main():
                             cg.track_index.append(track_id)
                             delta_list.append(synthetic_vector.copy())
 
-                            import faiss
-                            cg.faiss_index.add(synthetic_vector_2d)
+                            # Dynamically append to FAISS if FAISS index is loaded
+                            if cg.faiss_index is not None:
+                                import faiss
+                                cg.faiss_index.add(synthetic_vector_2d)
 
                             # O(1) append to disk
                             append_delta_to_disk(track_id, synthetic_vector)
+
+                            # Synchronize to Qdrant vector database container if reachable
+                            if cg.qdrant and cg.qdrant.client:
+                                cg.qdrant.upsert_track(new_idx, track_id, synthetic_vector)
 
                 except Exception as worker_err:
                     print(json.dumps({"worker_error": str(worker_err), "trace": traceback.format_exc()}), flush=True)
@@ -206,21 +218,31 @@ def main():
                 # Fix 1: Read-scoped limit (default 25 to give headroom for Node DB filtering)
                 limit             = int(req.get("limit", 25))
 
-                u_idx = cg.user_id_to_idx.get(user_id)
+                # Resolve User profile vector u_t (Vector DB primary, local fallback)
+                u_t = None
+                if cg.qdrant and cg.qdrant.client:
+                    q_prof, _ = cg.qdrant.get_user_data(user_id)
+                    if q_prof is not None:
+                        u_t = q_prof
 
                 with data_lock:
-                    if u_idx is None:
-                        # Synthesize cold-start user profile dynamically from their recent watch history
-                        valid_indices = [track_id_to_idx[tid] for tid in history_track_ids if tid in track_id_to_idx]
+                    if u_t is None:
+                        u_idx = cg.user_id_to_idx.get(user_id)
+                        if u_idx is not None:
+                            u_t = user_profiles[u_idx]
+                        else:
+                            # Synthesize cold-start user profile dynamically from their recent watch history
+                            valid_indices = [track_id_to_idx[tid] for tid in history_track_ids if tid in track_id_to_idx]
 
-                        if not valid_indices:
-                            # Absolute cold start with no known history at all
-                            print(json.dumps({"reqId": req_id, "tracks": []}), flush=True)
-                            continue
+                            if not valid_indices:
+                                # Absolute cold start with no known history at all
+                                print(json.dumps({"reqId": req_id, "tracks": []}), flush=True)
+                                continue
 
-                        u_t = np.mean(get_vecs(valid_indices), axis=0).astype(np.float32)
-                    else:
-                        u_t = user_profiles[u_idx]
+                            u_t = np.mean(get_vecs(valid_indices), axis=0).astype(np.float32)
+                            # Persist dynamically synthesized profile to Qdrant user_profiles collection
+                            if cg.qdrant and cg.qdrant.client:
+                                cg.qdrant.upsert_user_data(user_id, u_t)
 
                     # 1. Candidate Blending with request-scoped candidate retrieval
                     candidates = cg.generate_candidates(user_id, u_t, K=max(limit, 50))
@@ -255,15 +277,21 @@ def main():
                         print(json.dumps({"reqId": req_id, "tracks": []}), flush=True)
                         continue
 
-                    import faiss
-                    # 1. FAISS Nearest Neighbors for the Track
+                    # 1. Nearest Neighbors for the Track (Qdrant primary, FAISS fallback)
                     vector = get_vec(t_idx).reshape(1, -1).astype(np.float32)
-                    faiss.normalize_L2(vector)
+                    norm = np.linalg.norm(vector)
+                    if norm > 0:
+                        vector = vector / norm
 
-                    # Retrieve top contextually similar tracks
                     retrieve_k = max(limit * 2, 50)
-                    D, I       = cg.faiss_index.search(vector, retrieve_k)
-                    candidates = [track_index[idx] for idx in I[0] if idx != -1 and idx < len(track_index)]
+                    candidates = []
+                    if cg.qdrant and cg.qdrant.client:
+                        candidates = cg.qdrant.search_similar_vector(vector[0], limit=retrieve_k)
+
+                    if not candidates:
+                        import faiss
+                        D, I = cg.faiss_index.search(vector, retrieve_k)
+                        candidates = [track_index[idx] for idx in I[0] if idx != -1 and idx < len(track_index)]
 
                 if not candidates:
                     print(json.dumps({"reqId": req_id, "tracks": []}), flush=True)

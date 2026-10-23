@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { BellIcon, MagnifyingGlassIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
-import { DEFAULT_AVATAR } from '../utils/avatarUtils';
+import { DEFAULT_AVATAR, getAvatar } from '../utils/avatarUtils';
 import { useAuthStore } from '../utils/authStore';
 
 const Navbar = () => {
@@ -195,8 +195,9 @@ const Navbar = () => {
             <div className="group relative ml-[6px]">
               <div className="flex items-center gap-2 cursor-pointer py-[2px]">
                 <img
-                  src={activeProfile?.avatar || user?.avatar || DEFAULT_AVATAR}
+                  src={getAvatar(activeProfile?.avatar || user?.avatar)}
                   alt={activeProfile?.name || user?.name || 'Profile'}
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR; }}
                   className="h-[32px] w-[32px] rounded-md object-cover ring-2 ring-transparent group-hover:ring-[#1DB954]/60 transition-all duration-200"
                 />
                 <div className="border-t-[4px] border-t-white/70 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent transition-transform duration-200 group-hover:rotate-180 mt-[2px]" />
@@ -208,8 +209,9 @@ const Navbar = () => {
                   {/* Active Profile Info */}
                   <div className="flex items-center px-[14px] py-[8px] text-[13px] text-white">
                     <img
-                      src={activeProfile?.avatar || user?.avatar || DEFAULT_AVATAR}
+                      src={getAvatar(activeProfile?.avatar || user?.avatar)}
                       alt={activeProfile?.name || user?.name || 'Profile'}
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATAR; }}
                       className="h-[34px] w-[34px] rounded-lg object-cover mr-[10px]"
                     />
                     <div className="flex flex-col">

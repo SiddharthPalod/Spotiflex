@@ -27,77 +27,77 @@ class CandidateGenerator:
         self.user_index = joblib.load(os.path.join(FEATURE_STORE_DIR, 'user_index.pkl'))
         self.user_id_to_idx = {uid: idx for idx, uid in enumerate(self.user_index)}
         
-        # Load FAISS
-        self.faiss_index = faiss.read_index(os.path.join(FEATURE_STORE_DIR, 'track_faiss.index'))
-        faiss_params_path = os.path.join(FEATURE_STORE_DIR, 'faiss_params.json')
-        if os.path.exists(faiss_params_path):
-            with open(faiss_params_path, 'r') as f:
-                faiss_params = json.load(f)
-                self.faiss_index.hnsw.efSearch = faiss_params.get('efS', 200)
-        else:
+        # Optional fallback: Load FAISS only if index file exists
+        faiss_index_path = os.path.join(FEATURE_STORE_DIR, 'track_faiss.index')
+        if os.path.exists(faiss_index_path):
+            self.faiss_index = faiss.read_index(faiss_index_path)
             self.faiss_index.hnsw.efSearch = 200
-            
-        # Dynamically attach runtime delta vectors to FAISS in memory if present
-        # Check both the new append-only binary log and legacy .npy delta
-        delta_bin_path = os.path.join(FEATURE_STORE_DIR, 'track_vectors_delta.bin')
-        delta_path = os.path.join(FEATURE_STORE_DIR, 'track_vectors_delta.npy')
-        
-        delta_to_add = None
-        if os.path.exists(delta_bin_path) and os.path.getsize(delta_bin_path) > 0:
-            num_vecs = os.path.getsize(delta_bin_path) // (1404 * 4)
-            if num_vecs > 0:
-                delta_arr = np.fromfile(delta_bin_path, dtype=np.float32).reshape(num_vecs, 1404)
-                if self.faiss_index.ntotal < len(self.track_index):
-                    missing_count = len(self.track_index) - self.faiss_index.ntotal
-                    delta_to_add = delta_arr[-missing_count:].astype(np.float32)
-        elif os.path.exists(delta_path):
-            delta_arr = np.load(delta_path)
-            if len(delta_arr) > 0 and self.faiss_index.ntotal < len(self.track_index):
-                missing_count = len(self.track_index) - self.faiss_index.ntotal
-                delta_to_add = delta_arr[-missing_count:].astype(np.float32)
+        else:
+            self.faiss_index = None
 
-        if delta_to_add is not None and len(delta_to_add) > 0:
-            self.faiss_index.add(delta_to_add)
+        # Optional fallback: Load ALS implicit model only if factor files exist
+        als_user_path = os.path.join(FEATURE_STORE_DIR, 'als_user_factors.npy')
+        als_track_path = os.path.join(FEATURE_STORE_DIR, 'als_track_factors.npy')
+        if os.path.exists(als_user_path) and os.path.exists(als_track_path):
+            als_user_factors = np.load(als_user_path)
+            als_track_factors = np.load(als_track_path)
+            self.als_model = implicit.als.AlternatingLeastSquares(factors=als_user_factors.shape[1])
+            self.als_model.user_factors = als_user_factors
+            self.als_model.item_factors = als_track_factors
+            self.empty_user_items = sp.csr_matrix((len(self.user_index), len(self.track_index)))
+        else:
+            self.als_model = None
+            self.empty_user_items = None
+        
+        # Initialize optional Qdrant Vector Store connection
+        try:
+            from src.content.qdrant_store import QdrantVectorStore
+            self.qdrant = QdrantVectorStore()
+        except Exception:
+            self.qdrant = None
 
-        # Load ALS
-        als_user_factors = np.load(os.path.join(FEATURE_STORE_DIR, 'als_user_factors.npy'))
-        als_track_factors = np.load(os.path.join(FEATURE_STORE_DIR, 'als_track_factors.npy'))
-        
-        # Instantiate implicit model dynamically from saved offline factors
-        self.als_model = implicit.als.AlternatingLeastSquares(factors=als_user_factors.shape[1])
-        self.als_model.user_factors = als_user_factors
-        self.als_model.item_factors = als_track_factors
-        
-        # implicit's recommend() requires a user_items matrix. 
-        # We pass an empty sparse matrix to skip filtering out historical listens for raw candidate generation.
-        self.empty_user_items = sp.csr_matrix((len(self.user_index), len(self.track_index)))
-        
         print("Candidate Generator ready.", file=sys.stderr)
 
     def get_content_candidates(self, user_profile_vector, K=200):
-        """Channel A: ANN Content Search"""
-        # Ensure vector is (1, d) float32 and L2 normalized for Inner Product = Cosine Sim
+        """Channel A: ANN Content Search (tries Qdrant first, falls back to FAISS)"""
         vector = user_profile_vector.reshape(1, -1).astype(np.float32)
         faiss.normalize_L2(vector)
         
+        # Try Qdrant container first
+        if self.qdrant and self.qdrant.client:
+            q_candidates = self.qdrant.search_similar_vector(vector[0], limit=K)
+            if q_candidates:
+                return q_candidates
+
+        # Fallback to in-process FAISS
         D, I = self.faiss_index.search(vector, K)
-        
-        # Map internal indices back to actual string track IDs
-        candidates = [self.track_index[idx] for idx in I[0] if idx != -1]
+        candidates = [self.track_index[idx] for idx in I[0] if idx != -1 and idx < len(self.track_index)]
         return candidates
 
     def get_collab_candidates(self, user_id, K=200):
-        """Channel B: ALS Collaborative Filtering"""
-        if user_id not in self.user_id_to_idx:
-            return [] # Cold-start user
-            
-        u_idx = self.user_id_to_idx[user_id]
-        
-        # filter_already_liked_items=False ensures we just get top N nearest vectors in the latent space
-        ids, scores = self.als_model.recommend(u_idx, self.empty_user_items[u_idx], N=K, filter_already_liked_items=False)
-        
-        candidates = [self.track_index[idx] for idx in ids]
-        return candidates
+        """Channel B: ALS Collaborative Filtering (Direct Qdrant Dot Product Search)"""
+        # 1. Primary: Query user factor directly from Qdrant and execute dot product search
+        if self.qdrant and self.qdrant.client:
+            _, user_factor = self.qdrant.get_user_data(user_id)
+            if user_factor is not None:
+                q_collab = self.qdrant.query_als_candidates(user_factor, limit=K)
+                if q_collab:
+                    return q_collab
+
+        # 2. Fallback to in-memory ALS model if Qdrant user lookup missed
+        if user_id in self.user_id_to_idx:
+            u_idx = self.user_id_to_idx[user_id]
+            if self.qdrant and self.qdrant.client:
+                user_factor = self.als_model.user_factors[u_idx]
+                q_collab = self.qdrant.query_als_candidates(user_factor, limit=K)
+                if q_collab:
+                    return q_collab
+
+            ids, scores = self.als_model.recommend(u_idx, self.empty_user_items[u_idx], N=K, filter_already_liked_items=False)
+            candidates = [self.track_index[idx] for idx in ids if idx < len(self.track_index)]
+            return candidates
+
+        return [] # Cold-start user
 
     def generate_candidates(self, user_id, user_profile_vector, K=200):
         """Union of both channels"""

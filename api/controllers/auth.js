@@ -8,6 +8,7 @@ import { generateToken } from '../middlewares/auth.js';
 import { sendOtpEmail } from '../utils/mailer.js';
 
 const prisma = new PrismaClient();
+const DEFAULT_AVATAR = '/avatars/default-avatar.svg';
 
 /**
  * Step 1: Initiates registration by creating and sending a 6-digit OTP
@@ -134,7 +135,7 @@ export const verifyOtp = async (req, res) => {
         emailHash: emailH,
         passwordHash,
         name: name?.trim() || email.split('@')[0],
-        avatar: 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+        avatar: DEFAULT_AVATAR,
       },
     });
 
@@ -253,7 +254,7 @@ export const login = async (req, res) => {
         id: user.id,
         name: user.name,
         email: plainEmail,
-        avatar: user.avatar || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+        avatar: user.avatar || DEFAULT_AVATAR,
       },
       token,
     });
@@ -288,7 +289,7 @@ export const ensureDefaultProfile = async (userId, userName, userAvatar) => {
       data: {
         userId,
         name: userName || 'Member',
-        avatar: userAvatar || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+        avatar: userAvatar || DEFAULT_AVATAR,
         isKids: false,
       },
     });
@@ -334,7 +335,7 @@ export const createProfile = async (req, res) => {
       data: {
         userId,
         name: name.trim(),
-        avatar: avatar || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+        avatar: avatar || DEFAULT_AVATAR,
         isKids: Boolean(isKids),
       },
     });
@@ -355,16 +356,35 @@ export const updateProfileById = async (req, res) => {
     const { id } = req.params;
     const { name, avatar, isKids } = req.body;
 
-    const existing = await prisma.profile.findFirst({
+    let existing = await prisma.profile.findFirst({
       where: { id, userId },
     });
 
     if (!existing) {
-      return res.status(404).json({ error: 'Profile not found.' });
+      // If client sent user.id as fallback, check if primary profile exists or create it
+      if (id === userId) {
+        existing = await prisma.profile.findFirst({
+          where: { userId },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (!existing) {
+          existing = await prisma.profile.create({
+            data: {
+              userId,
+              name: name?.trim() || req.user.name || 'Member',
+              avatar: avatar || req.user.avatar || '/avatars/default-avatar.svg',
+              isKids: Boolean(isKids),
+            },
+          });
+          return res.status(200).json({ profile: existing, message: 'Profile created and updated successfully.' });
+        }
+      } else {
+        return res.status(404).json({ error: 'Profile not found.' });
+      }
     }
 
     const updated = await prisma.profile.update({
-      where: { id },
+      where: { id: existing.id },
       data: {
         ...(name && { name: name.trim() }),
         ...(avatar && { avatar }),
@@ -512,7 +532,7 @@ export const googleAuth = async (req, res) => {
           email: encEmail,
           emailHash: emailH,
           name: name || email.split('@')[0],
-          avatar: picture || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+          avatar: picture || DEFAULT_AVATAR,
         },
       });
     }
@@ -533,7 +553,7 @@ export const googleAuth = async (req, res) => {
         id: user.id,
         name: user.name,
         email: plainEmail,
-        avatar: user.avatar || picture || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+        avatar: user.avatar || picture || DEFAULT_AVATAR,
       },
       token,
     });
@@ -626,7 +646,7 @@ export const googleCallback = async (req, res) => {
           email: encEmail,
           emailHash: emailH,
           name: name || email.split('@')[0],
-          avatar: picture || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+          avatar: picture || DEFAULT_AVATAR,
         },
       });
     }

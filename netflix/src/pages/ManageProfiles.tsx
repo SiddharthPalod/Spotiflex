@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore, Profile } from '../utils/authStore';
-import { AVATAR_OPTIONS, DEFAULT_AVATAR } from '../utils/avatarUtils';
-import { PencilSquareIcon, CheckIcon, TrashIcon, ArrowLeftIcon } from '@heroicons/react/24/solid';
+import { AVATAR_OPTIONS, DEFAULT_AVATAR, getAvatar } from '../utils/avatarUtils';
+import { 
+  PencilSquareIcon, 
+  CheckIcon, 
+  TrashIcon, 
+  ArrowLeftIcon, 
+  PlusCircleIcon, 
+  UserPlusIcon, 
+  XMarkIcon 
+} from '@heroicons/react/24/solid';
 
 const ManageProfiles: React.FC = () => {
-  const { user, profiles, fetchProfiles, updateProfileItem, deleteProfileItem, isLoading } = useAuthStore();
+  const { user, profiles, fetchProfiles, createProfile, updateProfileItem, deleteProfileItem, isLoading } = useAuthStore();
   const navigate = useNavigate();
 
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
@@ -15,6 +23,13 @@ const ManageProfiles: React.FC = () => {
   const [customUrl, setCustomUrl] = useState('');
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
+
+  // Add profile modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newProfileName, setNewProfileName] = useState('');
+  const [newSelectedAvatar, setNewSelectedAvatar] = useState(AVATAR_OPTIONS[1] || DEFAULT_AVATAR);
+  const [newIsKids, setNewIsKids] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProfiles();
@@ -87,6 +102,7 @@ const ManageProfiles: React.FC = () => {
     const success = await updateProfileItem(editingProfile.id, editName.trim(), editAvatar, editIsKids);
     if (success) {
       setIsSaved(true);
+      await fetchProfiles();
       setTimeout(() => {
         setEditingProfile(null);
         setIsSaved(false);
@@ -95,11 +111,33 @@ const ManageProfiles: React.FC = () => {
   };
 
   const handleDeleteProfile = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this profile?')) {
+    if (window.confirm('Are you sure you want to delete this profile? All personalized playlists and history will be removed.')) {
       const success = await deleteProfileItem(id);
-      if (success && editingProfile?.id === id) {
-        setEditingProfile(null);
+      if (success) {
+        await fetchProfiles();
+        if (editingProfile?.id === id) {
+          setEditingProfile(null);
+        }
       }
+    }
+  };
+
+  const handleCreateProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddError(null);
+
+    if (!newProfileName.trim()) {
+      setAddError('Please enter a name for the profile');
+      return;
+    }
+
+    const created = await createProfile(newProfileName.trim(), newSelectedAvatar, newIsKids);
+    if (created) {
+      setShowAddModal(false);
+      setNewProfileName('');
+      await fetchProfiles();
+    } else {
+      setAddError('Failed to create profile. Maximum 5 profiles allowed per account.');
     }
   };
 
@@ -137,7 +175,7 @@ const ManageProfiles: React.FC = () => {
                 >
                   <div className="w-28 h-28 md:w-36 md:h-36 rounded-2xl overflow-hidden border-2 border-transparent group-hover:border-white transition-all duration-200 group-hover:scale-105 shadow-2xl relative bg-[#222]">
                     <img
-                      src={prof.avatar || DEFAULT_AVATAR}
+                      src={getAvatar(prof.avatar)}
                       alt={prof.name}
                       className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                       onError={(e) => {
@@ -149,6 +187,11 @@ const ManageProfiles: React.FC = () => {
                         <PencilSquareIcon className="w-6 h-6" />
                       </div>
                     </div>
+                    {prof.isKids && (
+                      <div className="absolute bottom-2 left-2 bg-yellow-400 text-black text-[10px] font-bold px-1.5 py-0.5 rounded">
+                        KIDS
+                      </div>
+                    )}
                   </div>
 
                   <span className="text-white/70 group-hover:text-white text-base md:text-lg font-bold transition-colors">
@@ -156,6 +199,22 @@ const ManageProfiles: React.FC = () => {
                   </span>
                 </div>
               ))}
+
+              {/* Add Profile Tile (If < 5 profiles) */}
+              {displayedProfiles.length < 5 && (
+                <div
+                  onClick={() => setShowAddModal(true)}
+                  className="group flex flex-col items-center gap-3 cursor-pointer"
+                >
+                  <div className="w-28 h-28 md:w-36 md:h-36 rounded-2xl border-2 border-dashed border-white/20 group-hover:border-[#1DB954] flex flex-col items-center justify-center transition-all duration-200 group-hover:scale-105 bg-white/[0.02] group-hover:bg-[#1DB954]/5">
+                    <PlusCircleIcon className="w-12 h-12 text-white/40 group-hover:text-[#1DB954] transition-colors" />
+                    <span className="text-[11px] text-white/50 group-hover:text-white mt-1">Add Profile</span>
+                  </div>
+                  <span className="text-white/40 group-hover:text-white text-sm font-medium transition-colors">
+                    New Profile
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Done Button */}
@@ -344,6 +403,92 @@ const ManageProfiles: React.FC = () => {
           </form>
         )}
       </div>
+
+      {/* Add Profile Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-[#181818] border border-white/10 rounded-2xl p-6 md:p-8 max-w-md w-full shadow-2xl relative animate-scale-up">
+            <button
+              onClick={() => setShowAddModal(false)}
+              className="absolute top-4 right-4 p-2 text-white/40 hover:text-white rounded-full hover:bg-white/10 transition"
+            >
+              <XMarkIcon className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-[#1DB954]/10 rounded-xl text-[#1DB954]">
+                <UserPlusIcon className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Add Profile</h2>
+                <p className="text-xs text-white/50">Add a family profile with its own music & playlists</p>
+              </div>
+            </div>
+
+            {addError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl">
+                {addError}
+              </div>
+            )}
+
+            <form onSubmit={handleCreateProfileSubmit} className="space-y-5">
+              <div>
+                <label className="block text-xs font-semibold text-white/70 mb-1.5">Profile Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Maya, Kids, Dad"
+                  value={newProfileName}
+                  onChange={(e) => setNewProfileName(e.target.value)}
+                  className="w-full bg-[#1f1f1f] border border-white/10 focus:border-[#1DB954] text-white px-4 py-3 rounded-xl text-sm outline-none transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-white/70 mb-2">Choose Icon</label>
+                <div className="grid grid-cols-6 gap-2">
+                  {AVATAR_OPTIONS.slice(0, 12).map((av, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => setNewSelectedAvatar(av)}
+                      className={`cursor-pointer rounded-lg overflow-hidden border-2 aspect-square transition-all ${
+                        newSelectedAvatar === av ? 'border-[#1DB954] scale-105' : 'border-transparent opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={av} alt={`Avatar ${idx}`} className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 bg-white/[0.03] p-3 rounded-xl border border-white/5">
+                <input
+                  type="checkbox"
+                  id="new-kids-toggle"
+                  checked={newIsKids}
+                  onChange={(e) => setNewIsKids(e.target.checked)}
+                  className="w-4 h-4 accent-[#1DB954] cursor-pointer"
+                />
+                <label htmlFor="new-kids-toggle" className="text-xs text-white/80 cursor-pointer">
+                  Kid's Profile? (Only kid-friendly music)
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3.5 bg-[#1DB954] hover:bg-[#1ed760] text-black font-bold text-sm rounded-xl transition flex items-center justify-center cursor-pointer shadow-lg shadow-[#1DB954]/20"
+              >
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  'Create Profile'
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

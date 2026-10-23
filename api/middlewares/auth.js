@@ -17,6 +17,31 @@ export const generateToken = (user) => {
   );
 };
 
+export const resolveProfileId = async (userId, requestedProfileId) => {
+  if (requestedProfileId) {
+    const found = await prisma.profile.findFirst({
+      where: { id: requestedProfileId, userId },
+    });
+    if (found) return found.id;
+  }
+  let primary = await prisma.profile.findFirst({
+    where: { userId },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!primary) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    primary = await prisma.profile.create({
+      data: {
+        userId,
+        name: user?.name || 'Member',
+        avatar: user?.avatar || '/avatars/default-avatar.svg',
+        isKids: false,
+      },
+    });
+  }
+  return primary.id;
+};
+
 export const requireAuth = async (req, res, next) => {
   try {
     let token = null;
@@ -44,8 +69,11 @@ export const requireAuth = async (req, res, next) => {
       id: user.id,
       name: user.name,
       email: decryptEmail(user.email),
-      avatar: user.avatar || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+      avatar: user.avatar || '/avatars/default-avatar.svg',
     };
+
+    const reqProf = req.headers['x-profile-id'] || req.query?.profileId || req.body?.profileId;
+    req.profileId = await resolveProfileId(user.id, reqProf);
 
     next();
   } catch (err) {
@@ -76,8 +104,10 @@ export const optionalAuth = async (req, res, next) => {
           id: user.id,
           name: user.name,
           email: decryptEmail(user.email),
-          avatar: user.avatar || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+          avatar: user.avatar || '/avatars/default-avatar.svg',
         };
+        const reqProf = req.headers['x-profile-id'] || req.query?.profileId || req.body?.profileId;
+        req.profileId = await resolveProfileId(user.id, reqProf);
         return next();
       }
     }
@@ -90,7 +120,9 @@ export const optionalAuth = async (req, res, next) => {
     id: 'alok-nath-1',
     name: 'Alok Nath',
     email: 'alok@spotiflix.com',
-    avatar: 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+    avatar: '/avatars/default-avatar.svg',
   };
+  const reqProf = req.headers['x-profile-id'] || req.query?.profileId || req.body?.profileId;
+  req.profileId = await resolveProfileId('alok-nath-1', reqProf);
   next();
 };
