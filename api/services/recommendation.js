@@ -23,8 +23,8 @@ export class RecommendationService {
             });
             const historyTrackIds = history.map(h => h.trackId);
             
-            // 1. Get raw string Track IDs from the Python daemon
-            const trackIds = await mlService.getRecommendations(userId, historyTrackIds);
+            // 1. Get raw string Track IDs from the Python daemon (request top 25 for deduplication buffer)
+            const trackIds = await mlService.getRecommendations(userId, historyTrackIds, 25);
             
             if (!trackIds || trackIds.length === 0) {
                 return []; // Trigger controller cold-start fallback
@@ -85,7 +85,7 @@ export class RecommendationService {
         const mlService = MLService.getInstance();
         
         try {
-            let trackIds = await mlService.getSimilarTracks(userId, trackId);
+            let trackIds = await mlService.getSimilarTracks(userId, trackId, 25);
             
             if (!trackIds || trackIds.length === 0) {
                 return [];

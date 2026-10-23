@@ -117,7 +117,7 @@ export class MLService {
         });
     }
 
-    async getRecommendations(userId, historyTrackIds = []) {
+    async getRecommendations(userId, historyTrackIds = [], limit = 25) {
         if (!this.ready) {
             console.warn(`[MLService] Daemon still loading — waiting up to 45s for FAISS index to load...`);
             try {
@@ -146,12 +146,12 @@ export class MLService {
             });
             
             // Push to Python's stdin
-            const payload = JSON.stringify({ reqId, action: "recommend", userId, historyTrackIds });
+            const payload = JSON.stringify({ reqId, action: "recommend", userId, historyTrackIds, limit });
             this.process.stdin.write(payload + '\n');
         });
     }
 
-    async getSimilarTracks(userId, trackId) {
+    async getSimilarTracks(userId, trackId, limit = 25) {
         if (!this.ready) {
             console.warn(`[MLService] Daemon still loading — waiting for FAISS index...`);
             try {
@@ -175,7 +175,7 @@ export class MLService {
                 else resolve(res.tracks || []);
             });
             
-            const payload = JSON.stringify({ reqId, action: "similar", userId, trackId });
+            const payload = JSON.stringify({ reqId, action: "similar", userId, trackId, limit });
             this.process.stdin.write(payload + '\n');
         });
     }
@@ -219,11 +219,11 @@ export class MLService {
         return new Promise((resolve, reject) => {
             const reqId = this.reqIdCounter++;
             
-            // This might take longer since it computes centroids and updates FAISS
+            // Queueing is near-instantaneous in the daemon now; 3s failsafe timeout
             const timeout = setTimeout(() => {
                 this.callbacks.delete(reqId);
                 reject(new Error("ML Engine Add Track Timeout"));
-            }, 10000);
+            }, 3000);
             
             this.callbacks.set(reqId, (res) => {
                 clearTimeout(timeout);
