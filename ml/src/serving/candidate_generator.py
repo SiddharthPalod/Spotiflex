@@ -16,6 +16,14 @@ class CandidateGenerator:
         
         # Load indices mapping
         self.track_index = joblib.load(os.path.join(FEATURE_STORE_DIR, 'track_index.pkl'))
+        delta_txt_path = os.path.join(FEATURE_STORE_DIR, 'track_index_delta.log')
+        if os.path.exists(delta_txt_path):
+            with open(delta_txt_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    tid = line.strip()
+                    if tid and tid not in self.track_index:
+                        self.track_index.append(tid)
+
         self.user_index = joblib.load(os.path.join(FEATURE_STORE_DIR, 'user_index.pkl'))
         self.user_id_to_idx = {uid: idx for idx, uid in enumerate(self.user_index)}
         
@@ -30,13 +38,26 @@ class CandidateGenerator:
             self.faiss_index.hnsw.efSearch = 200
             
         # Dynamically attach runtime delta vectors to FAISS in memory if present
+        # Check both the new append-only binary log and legacy .npy delta
+        delta_bin_path = os.path.join(FEATURE_STORE_DIR, 'track_vectors_delta.bin')
         delta_path = os.path.join(FEATURE_STORE_DIR, 'track_vectors_delta.npy')
-        if os.path.exists(delta_path):
+        
+        delta_to_add = None
+        if os.path.exists(delta_bin_path) and os.path.getsize(delta_bin_path) > 0:
+            num_vecs = os.path.getsize(delta_bin_path) // (1404 * 4)
+            if num_vecs > 0:
+                delta_arr = np.fromfile(delta_bin_path, dtype=np.float32).reshape(num_vecs, 1404)
+                if self.faiss_index.ntotal < len(self.track_index):
+                    missing_count = len(self.track_index) - self.faiss_index.ntotal
+                    delta_to_add = delta_arr[-missing_count:].astype(np.float32)
+        elif os.path.exists(delta_path):
             delta_arr = np.load(delta_path)
             if len(delta_arr) > 0 and self.faiss_index.ntotal < len(self.track_index):
                 missing_count = len(self.track_index) - self.faiss_index.ntotal
                 delta_to_add = delta_arr[-missing_count:].astype(np.float32)
-                self.faiss_index.add(delta_to_add)
+
+        if delta_to_add is not None and len(delta_to_add) > 0:
+            self.faiss_index.add(delta_to_add)
 
         # Load ALS
         als_user_factors = np.load(os.path.join(FEATURE_STORE_DIR, 'als_user_factors.npy'))

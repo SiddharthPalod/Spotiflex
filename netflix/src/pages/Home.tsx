@@ -61,26 +61,26 @@ const Home = () => {
   return (
     <div className="relative min-h-screen bg-[#141414] overflow-x-hidden">
       {/* ── Hero Section ─────────────────────────────────────────────────── */}
-      <div className="relative h-[56.25vw] max-h-[90vh] min-h-[420px] w-full cursor-pointer" onClick={handleHeroPlay}>
+      <div className="relative min-h-[500px] h-[56.25vw] max-h-[85vh] w-full cursor-pointer flex flex-col justify-end pb-24 sm:pb-28 md:pb-32" onClick={handleHeroPlay}>
         {/* Background gradient layers */}
-        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/30 to-transparent z-10" />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#141414]/20 to-[#141414] z-10" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/40 to-transparent z-10" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#141414]/30 to-[#141414] z-10" />
 
         {/* Hero cover art */}
         {heroCover && (
           <YouTubeImage
             src={heroCover}
             alt={heroMovie?.title || heroMovie?.name}
-            className="w-full h-full object-cover object-center"
+            className="absolute inset-0 w-full h-full object-cover object-center"
             hideOnFail={true}
           />
         )}
 
         {/* Hero content */}
-        <div className="absolute top-[28%] sm:top-[32%] left-4 md:left-[60px] z-20 max-w-[85%] sm:max-w-[65%] md:max-w-[50%] animate-slide-up">
+        <div className="relative z-20 px-4 md:px-[60px] max-w-[90%] sm:max-w-[75%] md:max-w-[60%] lg:max-w-[50%] animate-slide-up">
           {/* Now Playing chip */}
           {heroMovie && (
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2 mb-3">
               <span className="inline-flex items-center gap-1.5 bg-[#1DB954]/20 border border-[#1DB954]/40 text-[#1DB954] text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#1DB954] animate-pulse" />
                 Spotiflex Pick
@@ -88,18 +88,18 @@ const Home = () => {
             </div>
           )}
 
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-white mb-2 leading-tight drop-shadow-2xl">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white mb-2 leading-tight drop-shadow-2xl line-clamp-2 break-words">
             {heroMovie?.title || heroMovie?.name}
           </h1>
 
           {heroMovie?.artist && (
-            <p className="text-[#1DB954] text-lg sm:text-xl font-semibold mb-2">
+            <p className="text-[#1DB954] text-base sm:text-lg md:text-xl font-semibold mb-3 truncate">
               {heroMovie.artist}
             </p>
           )}
 
           {heroMovie?.overview && (
-            <p className="text-white/80 text-sm sm:text-base line-clamp-2 md:line-clamp-3 mb-6 leading-relaxed">
+            <p className="text-white/80 text-xs sm:text-sm md:text-base line-clamp-2 md:line-clamp-3 mb-5 leading-relaxed">
               {heroMovie.overview}
             </p>
           )}
@@ -107,7 +107,7 @@ const Home = () => {
           <div className="flex items-center gap-3 flex-wrap">
             <button
               id="hero-play"
-              className="flex items-center justify-center bg-white text-black px-6 sm:px-8 py-2.5 rounded-full font-bold text-base hover:bg-white/85 transition-all duration-200 hover:scale-105 shadow-lg"
+              className="flex items-center justify-center bg-white text-black px-6 sm:px-8 py-2.5 rounded-full font-bold text-sm sm:text-base hover:bg-white/85 transition-all duration-200 hover:scale-105 shadow-lg"
               onClick={handleHeroPlay}
             >
               <PlayIcon className="h-5 w-5 mr-2" />
@@ -115,7 +115,7 @@ const Home = () => {
             </button>
             <button
               id="hero-more-info"
-              className="flex items-center justify-center bg-white/20 backdrop-blur-sm text-white px-6 sm:px-8 py-2.5 rounded-full font-semibold text-base hover:bg-white/30 transition-all duration-200 border border-white/20"
+              className="flex items-center justify-center bg-white/20 backdrop-blur-sm text-white px-6 sm:px-8 py-2.5 rounded-full font-semibold text-sm sm:text-base hover:bg-white/30 transition-all duration-200 border border-white/20"
               onClick={() => heroMovie && setSelectedMovie(heroMovie)}
             >
               <InformationCircleIcon className="h-5 w-5 mr-2" />
@@ -126,7 +126,7 @@ const Home = () => {
       </div>
 
       {/* ── Music Rows ───────────────────────────────────────────────────── */}
-      <div className="relative z-20 -mt-12 md:-mt-16 pb-32">
+      <div className="relative z-20 pb-32">
         {homeRows.length > 0 ? (
           <>
             <MovieRow
