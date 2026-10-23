@@ -1,7 +1,7 @@
-export const DEFAULT_AVATAR = 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png';
+export const DEFAULT_AVATAR = '/avatars/default-avatar.svg';
 
 export const AVATAR_OPTIONS = [
-  'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+  '/avatars/default-avatar.svg',
   '/avatars/netflix-avatar-frog.png',
   'https://api.dicebear.com/7.x/bottts/svg?seed=Shadow&backgroundColor=0284c7',
   'https://api.dicebear.com/7.x/bottts/svg?seed=Spark&backgroundColor=16a34a',
@@ -16,5 +16,8 @@ export const AVATAR_OPTIONS = [
 ];
 
 export const getAvatar = (avatarUrl?: string): string => {
-  return avatarUrl || DEFAULT_AVATAR;
+  if (!avatarUrl || avatarUrl.includes('upload.wikimedia.org')) {
+    return DEFAULT_AVATAR;
+  }
+  return avatarUrl;
 };

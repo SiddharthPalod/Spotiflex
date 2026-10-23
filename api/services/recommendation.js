@@ -9,15 +9,16 @@ export class RecommendationService {
      * Hybrid Engine Core
      * Requests Candidates from the Python Stdio Daemon, then decorates them with Database metadata.
      */
-    static async getMadeForYou(userId) {
-        console.log(`[RecEngine] Requesting AI Hybrid Recs for ${userId}`);
+    static async getMadeForYou(userId, profileId = null) {
+        console.log(`[RecEngine] Requesting AI Hybrid Recs for ${userId}${profileId ? ` (profile: ${profileId})` : ''}`);
         
         const mlService = MLService.getInstance();
         
         try {
-            // Fetch recent watch history to handle cold-start users dynamically
+            // Fetch recent watch history to handle cold-start users dynamically (scoped to profile if provided)
+            const whereClause = profileId ? { userId, profileId } : { userId };
             const history = await prisma.watchHistory.findMany({
-                where: { userId },
+                where: whereClause,
                 orderBy: { watchedAt: 'desc' },
                 take: 20
             });

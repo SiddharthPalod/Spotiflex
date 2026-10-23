@@ -59,3 +59,9 @@ export const useLikeStore = create<LikeState>((set) => ({
     likedIds: { ...state.likedIds, [id]: isLiked }
   })),
 }));
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('spotiflix:profile-changed', () => {
+    useLikeStore.getState().fetchLikes();
+  });
+}

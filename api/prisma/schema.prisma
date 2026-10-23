@@ -39,6 +39,10 @@ model Profile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  playlists Playlist[]
+  history   WatchHistory[]
+  likes     Like[]
+
   @@index([userId])
 }
 
@@ -77,6 +81,7 @@ model Track {
 model WatchHistory {
   id              String   @id @default(uuid())
   userId          String
+  profileId       String?
   trackId         String
   watchedAt       DateTime @default(now())
   
@@ -91,23 +96,28 @@ model WatchHistory {
   skipSource      String?  // null | "closed" | "manual" | "auto"
 
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile         Profile? @relation(fields: [profileId], references: [id], onDelete: Cascade)
   track           Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   @@index([userId, watchedAt])
+  @@index([userId, profileId])
 }
 
 // ── Explicit Feedback ────────────────────────────────────────────────────
 model Like {
   id        String   @id @default(uuid())
   userId    String
+  profileId String?
   trackId   String
   isLike    Boolean  // true = thumbs up, false = thumbs down
   createdAt DateTime @default(now())
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile   Profile? @relation(fields: [profileId], references: [id], onDelete: Cascade)
   track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, trackId]) // A user can only like/dislike a track once
+  @@unique([userId, profileId, trackId])
+  @@index([userId, profileId])
 }
 
 // ── Custom Playlists ─────────────────────────────────────────────────────
@@ -115,10 +125,14 @@ model Playlist {
   id        String   @id @default(uuid())
   name      String
   userId    String
+  profileId String?
   createdAt DateTime @default(now())
 
   user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile   Profile?        @relation(fields: [profileId], references: [id], onDelete: Cascade)
   tracks    PlaylistTrack[]
+
+  @@index([userId, profileId])
 }
 
 model PlaylistTrack {

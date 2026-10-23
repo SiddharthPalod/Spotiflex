@@ -74,6 +74,11 @@ if (initialToken) {
   axios.defaults.headers.common['Authorization'] = `Bearer ${initialToken}`;
 }
 
+if (initialActiveProfile?.id) {
+  api.defaults.headers.common['X-Profile-Id'] = initialActiveProfile.id;
+  axios.defaults.headers.common['X-Profile-Id'] = initialActiveProfile.id;
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: initialUser,
   token: initialToken,
@@ -88,7 +93,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setActiveProfile: (profile: Profile) => {
     localStorage.setItem(ACTIVE_PROFILE_KEY, JSON.stringify(profile));
+    if (profile?.id) {
+      api.defaults.headers.common['X-Profile-Id'] = profile.id;
+      axios.defaults.headers.common['X-Profile-Id'] = profile.id;
+    }
     set({ activeProfile: profile });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('spotiflix:profile-changed', { detail: profile }));
+    }
   },
 
   fetchProfiles: async () => {
@@ -103,9 +115,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (found) {
         set({ activeProfile: found });
         localStorage.setItem(ACTIVE_PROFILE_KEY, JSON.stringify(found));
+        api.defaults.headers.common['X-Profile-Id'] = found.id;
+        axios.defaults.headers.common['X-Profile-Id'] = found.id;
       } else if (profiles.length > 0) {
         set({ activeProfile: profiles[0] });
         localStorage.setItem(ACTIVE_PROFILE_KEY, JSON.stringify(profiles[0]));
+        api.defaults.headers.common['X-Profile-Id'] = profiles[0].id;
+        axios.defaults.headers.common['X-Profile-Id'] = profiles[0].id;
       }
       return profiles;
     } catch (err) {
@@ -166,8 +182,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         nextActive = filtered[0] || null;
         if (nextActive) {
           localStorage.setItem(ACTIVE_PROFILE_KEY, JSON.stringify(nextActive));
+          api.defaults.headers.common['X-Profile-Id'] = nextActive.id;
+          axios.defaults.headers.common['X-Profile-Id'] = nextActive.id;
         } else {
           localStorage.removeItem(ACTIVE_PROFILE_KEY);
+          delete api.defaults.headers.common['X-Profile-Id'];
+          delete axios.defaults.headers.common['X-Profile-Id'];
         }
       }
 
@@ -325,6 +345,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.removeItem(ACTIVE_PROFILE_KEY);
       delete api.defaults.headers.common['Authorization'];
       delete axios.defaults.headers.common['Authorization'];
+      delete api.defaults.headers.common['X-Profile-Id'];
+      delete axios.defaults.headers.common['X-Profile-Id'];
       set({
         user: null,
         token: null,

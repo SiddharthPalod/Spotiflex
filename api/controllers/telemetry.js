@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma.js';
+import { resolveProfileId } from '../middlewares/auth.js';
 
 // ── Simulated Session ────────────────────────────────────────────────────────
 // Alok Nath is our simulated logged-in user. All telemetry is attributed to him.
@@ -66,15 +67,15 @@ async function upsertTrack(track, extraFields = {}, forceUpdateSchema = false) {
   });
 }
 
-async function getLikedSongsPlaylist(userId) {
+async function getLikedSongsPlaylist(userId, profileId) {
   let playlist = await prisma.playlist.findFirst({
-    where: { userId, name: LIKED_SONGS_PLAYLIST_NAME },
+    where: { userId, profileId, name: LIKED_SONGS_PLAYLIST_NAME },
   });
   if (!playlist) {
     playlist = await prisma.playlist.create({
-      data: { userId, name: LIKED_SONGS_PLAYLIST_NAME },
+      data: { userId, profileId, name: LIKED_SONGS_PLAYLIST_NAME },
     });
-    console.log('[Telemetry] Created "Liked Songs" playlist for', userId);
+    console.log('[Telemetry] Created "Liked Songs" playlist for user', userId, 'profile', profileId);
   }
   return playlist;
 }
@@ -93,11 +94,13 @@ export const recordWatch = async (req, res) => {
 
   try {
     const user = await getOrCreateUser(req.user);
+    const profileId = req.profileId || await resolveProfileId(user.id, req.headers['x-profile-id']);
     const trackRecord = await upsertTrack(track);
 
     const history = await prisma.watchHistory.create({
       data: {
         userId:          user.id,
+        profileId:       profileId,
         trackId:         String(trackRecord.id),
         durationWatched: Number(durationWatched) || 0,
         completed:       Boolean(completed),
@@ -167,9 +170,10 @@ export const recordLike = async (req, res) => {
   }
 
   try {
-    const user     = await getOrCreateUser(req.user);
-    const playlist = await getLikedSongsPlaylist(user.id);
-    const albumId  = String(track.id); // always a string for Prisma
+    const user      = await getOrCreateUser(req.user);
+    const profileId = req.profileId || await resolveProfileId(user.id, req.headers['x-profile-id']);
+    const playlist  = await getLikedSongsPlaylist(user.id, profileId);
+    const albumId   = String(track.id); // always a string for Prisma
 
     const hasMultipleTracks = albumTracks && albumTracks.length > 1;
     const isAlbumWithSongs  = track.isAlbum && hasMultipleTracks;
@@ -185,9 +189,9 @@ export const recordLike = async (req, res) => {
         await upsertTrack(t, { isAlbum: false, albumId }, true);
 
         await prisma.like.upsert({
-          where:  { userId_trackId: { userId: user.id, trackId: songId } },
+          where:  { userId_profileId_trackId: { userId: user.id, profileId, trackId: songId } },
           update: { isLike },
-          create: { userId: user.id, trackId: songId, isLike },
+          create: { userId: user.id, profileId, trackId: songId, isLike },
         });
       }
 
@@ -204,7 +208,7 @@ export const recordLike = async (req, res) => {
         });
       }
 
-      console.log(`[Telemetry] ❤  Album liked: "${track.title}" (${albumTracks.length} tracks)`);
+      console.log(`[Telemetry] ❤  Album liked: "${track.title}" (${albumTracks.length} tracks) [profile: ${profileId}]`);
     } else {
       // ── Single track (or album with only 1 song) ─────────────────────────
       // If it was an album with 1 song, we want to save the SONG's metadata but under the ALBUM's ID
@@ -217,9 +221,9 @@ export const recordLike = async (req, res) => {
       await upsertTrack(singleTrack, { isAlbum: false }, true);
 
       await prisma.like.upsert({
-        where:  { userId_trackId: { userId: user.id, trackId: singleId } },
+        where:  { userId_profileId_trackId: { userId: user.id, profileId, trackId: singleId } },
         update: { isLike },
-        create: { userId: user.id, trackId: singleId, isLike },
+        create: { userId: user.id, profileId, trackId: singleId, isLike },
       });
 
       if (isLike) {
@@ -234,7 +238,7 @@ export const recordLike = async (req, res) => {
         });
       }
 
-      console.log(`[Telemetry] ❤  Track liked: "${singleTrack.title}" by ${singleTrack.artist}`);
+      console.log(`[Telemetry] ❤  Track liked: "${singleTrack.title}" by ${singleTrack.artist} [profile: ${profileId}]`);
       
       // Send explicit positive/negative feedback to ML Engine (1.5 for like, -1.0 for dislike)
       import('../services/ml.js').then(({ MLService }) => {
@@ -277,11 +281,12 @@ export const recordLike = async (req, res) => {
  */
 export const getMyList = async (req, res) => {
   try {
-    const user = await getOrCreateUser(req.user);
+    const user      = await getOrCreateUser(req.user);
+    const profileId = req.profileId || await resolveProfileId(user.id, req.headers['x-profile-id']);
 
-    // 1. Fetch Liked Songs playlist
+    // 1. Fetch Liked Songs playlist for active profile
     const likedPlaylist = await prisma.playlist.findFirst({
-      where: { userId: user.id, name: LIKED_SONGS_PLAYLIST_NAME },
+      where: { userId: user.id, profileId, name: LIKED_SONGS_PLAYLIST_NAME },
       include: {
         tracks: {
           include: { track: true },
@@ -320,10 +325,11 @@ export const getMyList = async (req, res) => {
       }
     }
 
-    // 2. Fetch User's Custom Playlists
+    // 2. Fetch User's Custom Playlists for active profile
     const customPlaylists = await prisma.playlist.findMany({
       where: {
         userId: user.id,
+        profileId,
         NOT: { name: LIKED_SONGS_PLAYLIST_NAME },
       },
       include: {
@@ -372,11 +378,14 @@ export const createPlaylist = async (req, res) => {
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Playlist name is required' });
     }
-    const user = await getOrCreateUser(req.user);
+    const user      = await getOrCreateUser(req.user);
+    const profileId = req.profileId || await resolveProfileId(user.id, req.headers['x-profile-id']);
+
     const playlist = await prisma.playlist.create({
       data: {
         name: name.trim(),
         userId: user.id,
+        profileId,
       },
       include: {
         tracks: {
@@ -409,10 +418,13 @@ export const createPlaylist = async (req, res) => {
  */
 export const getPlaylists = async (req, res) => {
   try {
-    const user = await getOrCreateUser(req.user);
+    const user      = await getOrCreateUser(req.user);
+    const profileId = req.profileId || await resolveProfileId(user.id, req.headers['x-profile-id']);
+
     const customPlaylists = await prisma.playlist.findMany({
       where: {
         userId: user.id,
+        profileId,
         NOT: { name: LIKED_SONGS_PLAYLIST_NAME },
       },
       include: {
@@ -590,12 +602,14 @@ export const deletePlaylist = async (req, res) => {
  */
 export const getWatchHistory = async (req, res) => {
   try {
-    const user = await getOrCreateUser(req.user);
+    const user      = await getOrCreateUser(req.user);
+    const profileId = req.profileId || await resolveProfileId(user.id, req.headers['x-profile-id']);
 
     // Fetch the history, ordered by watchedAt descending
     const history = await prisma.watchHistory.findMany({
       where: {
         userId: user.id,
+        profileId,
       },
       orderBy: { watchedAt: 'desc' },
       include: {

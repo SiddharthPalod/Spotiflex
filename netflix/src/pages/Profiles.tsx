@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore, Profile } from '../utils/authStore';
-import { AVATAR_OPTIONS, DEFAULT_AVATAR } from '../utils/avatarUtils';
+import { AVATAR_OPTIONS, DEFAULT_AVATAR, getAvatar } from '../utils/avatarUtils';
 import { PlusCircleIcon, CheckBadgeIcon, UserPlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const Profiles: React.FC = () => {
@@ -78,7 +78,7 @@ const Profiles: React.FC = () => {
                   }`}
                 >
                   <img
-                    src={prof.avatar || DEFAULT_AVATAR}
+                    src={getAvatar(prof.avatar)}
                     alt={prof.name}
                     className="w-full h-full object-cover"
                     onError={(e) => {
