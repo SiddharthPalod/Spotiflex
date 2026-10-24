@@ -38,7 +38,7 @@ services:
     ports:
       - "3001:3001"
     env_file:
-      - spotiflix/api/.env
+      - api/.env
     environment:
       - PORT=3001
       - REDIS_URL=redis://redis:6379
