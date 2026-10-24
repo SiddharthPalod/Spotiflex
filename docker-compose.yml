@@ -1,7 +1,19 @@
 services:
-  # ── 1. Redis Cache Service ──────────────────────────────────────────
-  # Runs Redis with AOF persistence enabled so YouTube video cache survives restarts.
-  # Replaces the need to manually run "sudo service redis-server start" in WSL!
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: spotiflix-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/6333' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     container_name: spotiflix-redis
@@ -12,13 +24,11 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
 
-  # ── 2. Backend API & ML Daemon Service ──────────────────────────────
-  # Runs Express REST API (port 3001) and spawns the Python ML daemon (FAISS + LinUCB)
   api:
     container_name: spotiflix-api
     build:
@@ -32,6 +42,7 @@ services:
     environment:
       - PORT=3001
       - REDIS_URL=redis://redis:6379
+      - QDRANT_URL=http://qdrant:6333
       - DATABASE_URL=file:./dev.db
       - PYTHONUNBUFFERED=1
       - OPENBLAS_NUM_THREADS=1
@@ -43,9 +54,9 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      qdrant:
+        condition: service_healthy
 
-  # ── 3. Frontend UI Service ──────────────────────────────────────────
-  # React + Vite UI running on port 5173 with hot reload & API proxying
   frontend:
     container_name: spotiflix-frontend
     build:
@@ -64,4 +75,6 @@ services:
 
 volumes:
   redis_data:
+    driver: local
+  qdrant_data:
     driver: local
