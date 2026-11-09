@@ -4,6 +4,9 @@ Spotiflex (or AudioFlix) is a next-generation music streaming application that c
 
 Instead of traditional albums or playlists, Spotiflex presents music in a visual format where each banner represents a song or album, acting like "episodes" or "seasons" of a TV show.
 
+[![Spotiflex Demo](https://img.youtube.com/vi/d3OHVAhwSJI/maxresdefault.jpg)](https://youtu.be/d3OHVAhwSJI)
+[Watch the full demo on YouTube](https://youtu.be/d3OHVAhwSJI)
+
 ---
 
 ## 🎯 Features & Core Concepts
