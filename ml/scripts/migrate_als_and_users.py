@@ -14,8 +14,9 @@ USER_COLLECTION = "user_profiles"
 BATCH_SIZE = 2000
 
 def migrate_als_and_users():
-    print(f"Connecting to Qdrant at http://localhost:6333...")
-    client = QdrantClient(url="http://localhost:6333", timeout=60.0)
+    qdrant_url = os.environ.get("QDRANT_URL", "http://localhost:6333")
+    print(f"Connecting to Qdrant at {qdrant_url}...")
+    client = QdrantClient(url=qdrant_url, timeout=60.0)
 
     # ── 1. Migrate als_tracks (Collaborative Filtering Track Latent Factors) ─
     als_track_factors = np.load(os.path.join(FEATURE_STORE_DIR, 'als_track_factors.npy'), mmap_mode='r')

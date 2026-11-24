@@ -47,6 +47,23 @@ def main():
 
         track_index = joblib.load(track_index_path)
 
+        global_centroid_path = os.path.join(FEATURE_STORE_DIR, 'global_centroid.npy')
+        if os.path.exists(global_centroid_path):
+            global_centroid = np.load(global_centroid_path).astype(np.float32)
+        else:
+            global_centroid = np.zeros(1404, dtype=np.float32)
+
+        # Also load any delta track IDs from delta log if present
+        if os.path.exists(delta_txt_path):
+            with open(delta_txt_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    tid = line.strip()
+                    if tid and tid not in track_index:
+                        track_index.append(tid)
+
+        track_id_to_idx = {tid: idx for idx, tid in enumerate(track_index)}
+
+        delta_dict = {}  # idx -> vector
         delta_list = []
 
         # If append-only binary delta log exists, load from it
@@ -55,13 +72,10 @@ def main():
             if num_vecs > 0:
                 delta_arr = np.fromfile(delta_bin_path, dtype=np.float32).reshape(num_vecs, 1404)
                 delta_list = [delta_arr[i] for i in range(len(delta_arr))]
-            # Also load any delta track IDs from delta log if present
-            if os.path.exists(delta_txt_path):
-                with open(delta_txt_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        tid = line.strip()
-                        if tid and tid not in track_index:
-                            track_index.append(tid)
+                # The delta vectors in delta_arr correspond to the last num_vecs tracks in track_index
+                delta_start = max(0, len(track_index) - num_vecs)
+                for i in range(min(num_vecs, len(track_index))):
+                    delta_dict[delta_start + i] = delta_arr[i]
         elif os.path.exists(delta_npy_path):
             # Seed the binary log from existing npy file if present
             delta_arr = np.load(delta_npy_path)
@@ -69,8 +83,9 @@ def main():
             if len(delta_list) > 0:
                 with open(delta_bin_path, 'wb') as fb:
                     fb.write(delta_arr.astype(np.float32).tobytes())
-
-        track_id_to_idx = {tid: idx for idx, tid in enumerate(track_index)}
+                delta_start = max(0, len(track_index) - len(delta_list))
+                for i in range(min(len(delta_list), len(track_index))):
+                    delta_dict[delta_start + i] = delta_arr[i]
 
         # Synchronization lock for modifying shared track indices and FAISS
         data_lock = threading.Lock()
@@ -78,26 +93,44 @@ def main():
         # ── Vector Access Helpers (Primary: Qdrant, Fallback: Local Base) ─────
 
         def get_vec(idx):
-            """Single-row vector lookup — queries Qdrant first, falls back to local tier."""
+            """Single-row vector lookup — queries delta dict first, then Qdrant, then local base, fallback centroid."""
+            if idx in delta_dict:
+                return delta_dict[idx]
+
             if cg.qdrant and cg.qdrant.client:
-                qv = cg.qdrant.get_track_vector(idx)
-                if qv is not None:
-                    return qv
-            if idx < base_count:
-                return base_vectors[idx]
-            return delta_list[idx - base_count]
+                try:
+                    qv = cg.qdrant.get_track_vector(idx)
+                    if qv is not None:
+                        return qv
+                except Exception:
+                    pass
+
+            if base_vectors is not None and 0 <= idx < base_count:
+                return base_vectors[idx].astype(np.float32)
+
+            if global_centroid is not None:
+                return global_centroid
+            return np.zeros(1404, dtype=np.float32)
 
         def get_vecs(indices):
             """
             Batch vector lookup — queries Qdrant first, falls back to local tier.
+            Always returns float32 ndarray of shape (len(indices), 1404).
             """
-            if cg.qdrant and cg.qdrant.client:
-                q_batch = cg.qdrant.get_vectors_batch(indices)
-                if q_batch is not None and len(q_batch) == len(indices):
-                    return q_batch
+            if not indices:
+                return np.empty((0, 1404), dtype=np.float32)
 
-            if not delta_list or all(i < base_count for i in indices):
+            if cg.qdrant and cg.qdrant.client:
+                try:
+                    q_batch = cg.qdrant.get_vectors_batch(indices)
+                    if q_batch is not None and len(q_batch) == len(indices):
+                        return q_batch
+                except Exception:
+                    pass
+
+            if base_vectors is not None and all(0 <= i < base_count for i in indices):
                 return base_vectors[indices].astype(np.float32)
+
             return np.array([get_vec(i) for i in indices], dtype=np.float32)
 
         # ── Fix 3: Constant-Time Append Persistence ───────────────────────────
@@ -158,7 +191,9 @@ def main():
                             track_index.append(track_id)
                             track_id_to_idx[track_id] = new_idx
                             cg.track_index.append(track_id)
-                            delta_list.append(synthetic_vector.copy())
+                            vec_copy = synthetic_vector.copy()
+                            delta_list.append(vec_copy)
+                            delta_dict[new_idx] = vec_copy
 
                             # Dynamically append to FAISS if FAISS index is loaded
                             if cg.faiss_index is not None:
@@ -228,7 +263,7 @@ def main():
                 with data_lock:
                     if u_t is None:
                         u_idx = cg.user_id_to_idx.get(user_id)
-                        if u_idx is not None:
+                        if u_idx is not None and user_profiles is not None:
                             u_t = user_profiles[u_idx]
                         else:
                             # Synthesize cold-start user profile dynamically from their recent watch history
@@ -239,7 +274,12 @@ def main():
                                 print(json.dumps({"reqId": req_id, "tracks": []}), flush=True)
                                 continue
 
-                            u_t = np.mean(get_vecs(valid_indices), axis=0).astype(np.float32)
+                            history_vecs = get_vecs(valid_indices)
+                            if len(history_vecs) == 0:
+                                print(json.dumps({"reqId": req_id, "tracks": []}), flush=True)
+                                continue
+
+                            u_t = np.mean(history_vecs, axis=0).astype(np.float32)
                             # Persist dynamically synthesized profile to Qdrant user_profiles collection
                             if cg.qdrant and cg.qdrant.client:
                                 cg.qdrant.upsert_user_data(user_id, u_t)
@@ -252,15 +292,20 @@ def main():
 
                     # 2. Extract vectors for candidates (capped to limit * 2 to minimize matrix multiply)
                     scored_candidates = candidates[:max(limit * 2, 50)]
-                    cand_indices      = [track_id_to_idx[tid] for tid in scored_candidates if tid in track_id_to_idx]
-                    candidates_x_a    = get_vecs(cand_indices)
+                    valid_scored_candidates = [tid for tid in scored_candidates if tid in track_id_to_idx]
+                    if not valid_scored_candidates:
+                        print(json.dumps({"reqId": req_id, "tracks": candidates[:limit]}), flush=True)
+                        continue
+
+                    cand_indices   = [track_id_to_idx[tid] for tid in valid_scored_candidates]
+                    candidates_x_a = get_vecs(cand_indices)
 
                 # 3. Contextual Bandit Ranking (Hybrid LinUCB)
                 scores = bandit.score_candidates(user_id, u_t, candidates_x_a)
 
                 # 4. Sort and return Top N recommendations requested by caller
                 top_idx    = np.argsort(scores)[::-1][:limit]
-                top_tracks = [scored_candidates[i] for i in top_idx]
+                top_tracks = [valid_scored_candidates[i] for i in top_idx]
 
                 print(json.dumps({"reqId": req_id, "tracks": top_tracks}), flush=True)
 
@@ -289,23 +334,35 @@ def main():
                         candidates = cg.qdrant.search_similar_vector(vector[0], limit=retrieve_k)
 
                     if not candidates:
-                        import faiss
-                        D, I = cg.faiss_index.search(vector, retrieve_k)
-                        candidates = [track_index[idx] for idx in I[0] if idx != -1 and idx < len(track_index)]
+                        if cg.faiss_index is not None:
+                            import faiss
+                            D, I = cg.faiss_index.search(vector, retrieve_k)
+                            candidates = [track_index[idx] for idx in I[0] if idx != -1 and idx < len(track_index)]
 
                 if not candidates:
                     print(json.dumps({"reqId": req_id, "tracks": []}), flush=True)
                     continue
 
-                if u_idx is not None:
+                u_t = None
+                if cg.qdrant and cg.qdrant.client:
+                    q_prof, _ = cg.qdrant.get_user_data(user_id)
+                    if q_prof is not None:
+                        u_t = q_prof
+                if u_t is None and u_idx is not None and user_profiles is not None:
+                    u_t = user_profiles[u_idx]
+
+                if u_t is not None:
                     # Known user: Rank with Contextual Bandit
-                    u_t            = user_profiles[u_idx]
                     with data_lock:
-                        cand_indices   = [track_id_to_idx[tid] for tid in candidates if tid in track_id_to_idx]
+                        valid_candidates = [tid for tid in candidates if tid in track_id_to_idx]
+                        if not valid_candidates:
+                            print(json.dumps({"reqId": req_id, "tracks": candidates[:limit]}), flush=True)
+                            continue
+                        cand_indices   = [track_id_to_idx[tid] for tid in valid_candidates]
                         candidates_x_a = get_vecs(cand_indices)
                     scores         = bandit.score_candidates(user_id, u_t, candidates_x_a)
                     top_idx        = np.argsort(scores)[::-1][:limit]
-                    top_tracks     = [candidates[i] for i in top_idx]
+                    top_tracks     = [valid_candidates[i] for i in top_idx]
                     print(json.dumps({"reqId": req_id, "tracks": top_tracks}), flush=True)
                 else:
                     # Cold start user: Return the purest FAISS nearest neighbors up to limit
@@ -321,8 +378,15 @@ def main():
                     t_idx = track_id_to_idx.get(track_id)
                     x_a = get_vec(t_idx) if t_idx is not None else None
 
-                if u_idx is not None and x_a is not None:
+                u_t = None
+                if cg.qdrant and cg.qdrant.client:
+                    q_prof, _ = cg.qdrant.get_user_data(user_id)
+                    if q_prof is not None:
+                        u_t = q_prof
+                if u_t is None and u_idx is not None and user_profiles is not None:
                     u_t = user_profiles[u_idx]
+
+                if u_t is not None and x_a is not None:
                     bandit.update(user_id, u_t, x_a, reward)
 
                 print(json.dumps({"reqId": req_id, "status": "ok"}), flush=True)
@@ -345,7 +409,11 @@ def main():
                 print(json.dumps({"reqId": req_id, "error": "Unknown action"}), flush=True)
 
         except Exception as e:
-            print(json.dumps({"error": str(e), "trace": traceback.format_exc()}), flush=True)
+            err_resp = {"error": str(e), "trace": traceback.format_exc()}
+            if req_id is not None:
+                err_resp["reqId"] = req_id
+                err_resp["tracks"] = []
+            print(json.dumps(err_resp), flush=True)
 
 if __name__ == "__main__":
     main()

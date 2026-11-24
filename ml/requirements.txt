@@ -5,3 +5,4 @@ joblib
 faiss-cpu
 implicit
 scipy
+qdrant-client
