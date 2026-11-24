@@ -61,31 +61,41 @@ class CandidateGenerator:
     def get_content_candidates(self, user_profile_vector, K=200):
         """Channel A: ANN Content Search (tries Qdrant first, falls back to FAISS)"""
         vector = user_profile_vector.reshape(1, -1).astype(np.float32)
-        faiss.normalize_L2(vector)
+        norm = np.linalg.norm(vector)
+        if norm > 0:
+            vector = vector / norm
         
         # Try Qdrant container first
         if self.qdrant and self.qdrant.client:
-            q_candidates = self.qdrant.search_similar_vector(vector[0], limit=K)
-            if q_candidates:
-                return q_candidates
+            try:
+                q_candidates = self.qdrant.search_similar_vector(vector[0], limit=K)
+                if q_candidates:
+                    return q_candidates
+            except Exception:
+                pass
 
         # Fallback to in-process FAISS
-        D, I = self.faiss_index.search(vector, K)
-        candidates = [self.track_index[idx] for idx in I[0] if idx != -1 and idx < len(self.track_index)]
-        return candidates
+        if self.faiss_index is not None:
+            D, I = self.faiss_index.search(vector, K)
+            candidates = [self.track_index[idx] for idx in I[0] if idx != -1 and idx < len(self.track_index)]
+            return candidates
+        return []
 
     def get_collab_candidates(self, user_id, K=200):
         """Channel B: ALS Collaborative Filtering (Direct Qdrant Dot Product Search)"""
         # 1. Primary: Query user factor directly from Qdrant and execute dot product search
         if self.qdrant and self.qdrant.client:
-            _, user_factor = self.qdrant.get_user_data(user_id)
-            if user_factor is not None:
-                q_collab = self.qdrant.query_als_candidates(user_factor, limit=K)
-                if q_collab:
-                    return q_collab
+            try:
+                _, user_factor = self.qdrant.get_user_data(user_id)
+                if user_factor is not None:
+                    q_collab = self.qdrant.query_als_candidates(user_factor, limit=K)
+                    if q_collab:
+                        return q_collab
+            except Exception:
+                pass
 
         # 2. Fallback to in-memory ALS model if Qdrant user lookup missed
-        if user_id in self.user_id_to_idx:
+        if user_id in self.user_id_to_idx and self.als_model is not None:
             u_idx = self.user_id_to_idx[user_id]
             if self.qdrant and self.qdrant.client:
                 user_factor = self.als_model.user_factors[u_idx]

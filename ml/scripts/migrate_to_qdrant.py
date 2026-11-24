@@ -14,8 +14,9 @@ VECTOR_DIM = 1404
 BATCH_SIZE = 1000
 
 def migrate():
-    print(f"Connecting to Qdrant at http://localhost:6333...")
-    client = QdrantClient(url="http://localhost:6333", timeout=60.0)
+    qdrant_url = os.environ.get("QDRANT_URL", "http://localhost:6333")
+    print(f"Connecting to Qdrant at {qdrant_url}...")
+    client = QdrantClient(url=qdrant_url, timeout=60.0)
 
     # 1. Load baseline & delta track IDs
     print("Loading track index...")
